@@ -7,7 +7,7 @@ from PIL import Image
 from model import SemanticSegmentation
 from utils import log_eval_info
 
-class RGBSegmentationModel(nn.Module):
+class ERFNet(nn.Module):
     def __init__(self, seg_channels):
 
         super().__init__()
@@ -25,7 +25,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 def main(args):
     torch.manual_seed(args.seed)
 
-    seg_model = RGBSegmentationModel(seg_channels).to(device)
+    seg_model = ERFNet(seg_channels).to(device)
 
     # Load model
     load_dir = "."
@@ -35,14 +35,14 @@ def main(args):
     seg_model.eval()
     print ("Model and weights loaded successfully")
 
-    # read and make input ready for model
-    input_img = Image.open("cityscapes-ex.png")
+    # read the input and make it ready for the model
+    #input_img = Image.open("assets/cityscapes-ex.png")
+    input_img = Image.open("assets/carla-ex.jpeg")
     transform = transforms.Compose([
-        transforms.Resize((512, 1024), Image.BILINEAR), 
+        transforms.Resize((168, 336), Image.BILINEAR), 
         transforms.ToTensor(),
     ])
-    input_img = transform(input_img).to(device)
-    input_img = torch.autograd.Variable(input_img).unsqueeze(0)
+    input_img = transform(input_img).unsqueeze(0).to(device)
 
     with torch.no_grad(): 
         output = seg_model(input_img)

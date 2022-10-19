@@ -12,7 +12,7 @@ SEM_COLORS = {
     18: (220, 220, 0),
 }
 
-def visualize_semantic_processed(sem, labels=[4,6,7,10,18]):
+def visualize_semantic_processed(sem, labels=[4,6,7,10]):
     canvas = np.zeros(sem.shape+(3,), dtype=np.uint8)
     for i,label in enumerate(labels):
         canvas[sem==i+1] = SEM_COLORS[label]
@@ -38,10 +38,10 @@ def log_eval_info(seg_info):
     rgb = seg_info.pop('rgb')
     pred_sem = seg_info.pop('pred_sem')
 
-    f, [ax1, ax3] = plt.subplots(1,2,figsize=(12,4))
+    f, [ax1, ax2] = plt.subplots(1,2,figsize=(12,4))
 
     ax1.imshow(rgb)
-    ax3.imshow(visualize_semantic_processed(pred_sem))
+    ax2.imshow(visualize_semantic_processed(pred_sem))
     plt.show()
 
     plt.close('all')

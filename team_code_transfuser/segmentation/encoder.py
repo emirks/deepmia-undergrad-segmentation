@@ -18,6 +18,7 @@ class DownsamplerBlock(nn.Module):
         self.bn = nn.BatchNorm2d(noutput, eps = 1e-3)
 
     def forward(self, input): 
+        # convolution output shape and pool output shape must be same
         output = torch.cat([self.conv(input), self.pool(input)], 1)
         output = self.bn(output)
         return F.relu(output)

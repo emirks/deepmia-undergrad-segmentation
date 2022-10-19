@@ -8,7 +8,7 @@ from geometric_fusion import GeometricFusionBackbone
 from late_fusion import LateFusionBackbone
 from latentTF import latentTFBackbone
 from point_pillar import PointPillarNet
-
+from segmentation.model import SemanticSegmentation
 
 from PIL import Image, ImageFont, ImageDraw
 from torchvision import models
@@ -607,6 +607,11 @@ class LidarCenterNet(nn.Module):
         self.turn_controller = PIDController(K_P=config.turn_KP, K_I=config.turn_KI, K_D=config.turn_KD, n=config.turn_n)
         self.speed_controller = PIDController(K_P=config.speed_KP, K_I=config.speed_KI, K_D=config.speed_KD, n=config.speed_n)
 
+        # semantic segmentation
+        self.seg_model = SemanticSegmentation(self.config.num_class)
+        if self.config.load_seg_model: 
+            self.seg_model.load_state_dict(torch.load(self.config.seg_model_path))
+
     def forward_gru(self, z, target_point):
         z = self.join(z)
     
@@ -719,7 +724,12 @@ class LidarCenterNet(nn.Module):
         if debug and self.i % 2 == 0 and not (save_path is None):
             pred_bev = self.pred_bev(features[0])
             pred_bev = F.interpolate(pred_bev, (self.config.bev_resolution_height, self.config.bev_resolution_width), mode='bilinear', align_corners=True)
-            pred_semantic = self.seg_decoder(image_features_grid)
+            # pred_semantic = self.seg_decoder(image_features_grid)
+            
+            # current image format : torch tensor([1, 3, 160, 704])
+            # required image format for seg_model : torch.tensor([1, 3, H, W])
+            # it should work properly
+            pred_semantic = self.seg_model(rgb)
             pred_depth = self.depth_decoder(image_features_grid)
 
             self.visualize_model_io(save_path, self.i, self.config, rgb, lidar_bev, target_point,
@@ -777,7 +787,8 @@ class LidarCenterNet(nn.Module):
         loss.update(loss_bbox)
 
         if self.config.multitask:
-            pred_semantic = self.seg_decoder(image_features_grid)
+            # pred_semantic = self.seg_decoder(image_features_grid)
+            pred_semantic = self.seg_model(rgb)
             pred_depth = self.depth_decoder(image_features_grid)
             loss_semantic = self.config.ls_seg * F.cross_entropy(pred_semantic, semantic).mean()
             loss_depth = self.config.ls_depth * F.l1_loss(pred_depth, depth).mean()

@@ -48,8 +48,8 @@ def main(args):
 
     batch_size = 64
     
-    dataset = datasets.Cityscapes('./data/cityscapes', split='train', mode='fine',
-                    target_type='semantic') 
+    dataset = datasets.Cityscapes(root="./cityscapes/", split='train', 
+                    mode='fine', target_type='semantic') 
     dataloader = DataLoader(dataset, batch_size)
 
     global it
