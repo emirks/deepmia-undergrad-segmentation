@@ -1,8 +1,8 @@
 import sys
 
-from team_code_transfuser import dataset_creator
+from carla_settings import carla_egg_path
 try:
-    sys.path.append(dataset_creator.carla_egg_path)
+    sys.path.append(carla_egg_path)
 except IndexError:
     pass
 import carla

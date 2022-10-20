@@ -2,9 +2,9 @@ import glob
 import os
 import sys
 
-from team_code_transfuser import dataset_creator
+from carla_settings import carla_egg_path
 try:
-    sys.path.append(dataset_creator.carla_egg_path)
+    sys.path.append(carla_egg_path)
 except IndexError:
     pass
 import carla
@@ -12,12 +12,13 @@ import logging
 import random
 
 class CarlaNPC: 
-    def __init__(self, world) -> None:
+    def __init__(self, client) -> None:
         logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
         self.vehicles_list = []
         self.walkers_list = []
         self.all_id = []
-        self.world = world
+        self.client = client
+        self.world = self.client.get_world()
     
     def create_npcs(self, number_of_vehicles=150, number_of_walkers=70): 
         vehicle_blueprints = self.world.get_blueprint_library().filter('vehicle.*')
@@ -86,7 +87,7 @@ class CarlaNPC:
                 self.walkers_list.append({"id": results[i].actor_id})
         
         batch = []
-        for i in range(self.walkers_list): 
+        for i in range(len(self.walkers_list)): 
             batch.append(SpawnActor(walker_controller_bp, carla.Transform(), self.walkers_list[i]["id"]))
         results = self.client.apply_batch_sync(batch, True)
         for i in range(len(results)): 

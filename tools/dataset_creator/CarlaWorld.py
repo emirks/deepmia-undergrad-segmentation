@@ -1,8 +1,8 @@
 import sys
 
-from team_code_transfuser import dataset_creator
+from carla_settings import carla_egg_path
 try:
-    sys.path.append(dataset_creator.carla_egg_path)
+    sys.path.append(carla_egg_path)
 except IndexError:
     pass
 import carla
@@ -16,13 +16,18 @@ from CarlaSyncMode import CarlaSyncMode
 from HDF5Saver import HDF5Saver
 
 class CarlaWorld: 
-    def __init__(self, hdf5_file):
+    def __init__(self, hdf5_file, no_rendering=False):
         self.hdf5_file = hdf5_file
-        client = carla.Client('localhost', 2000)
-        client.set_timeout(20.0)
-        self.world = client.get_world()
+        self.client = carla.Client('localhost', 2000)
+        self.client.set_timeout(20.0)
+        self.world = self.client.get_world()
         print('Successfully connected to CARLA')
-        
+        settings = self.world.get_settings()
+        if no_rendering:
+            print('Rendering disabled.')
+            settings.no_rendering_mode = True
+            self.world.apply_settings(settings)
+
         self.blueprint_library = self.world.get_blueprint_library()
         self.weather_options = WeatherSelector().get_weather_options()
         self.total_recorded_frames = 0
@@ -35,10 +40,10 @@ class CarlaWorld:
     def set_weather(self, weather_option): 
         weather = carla.WeatherParameters(*weather_option)
         self.world.set_weather(weather)
-        print("Weather selected succesfully.")
+        print("Weather changed succesfully.")
     
     def spawn_npcs(self, number_of_vehicles, number_of_walkers): 
-        self.NPC = CarlaNPC(self.world)
+        self.NPC = CarlaNPC(self.client)
         self.wehicles, _ = self.NPC.create_npcs(number_of_vehicles, number_of_walkers)
 
     def remove_npcs(self): 
@@ -57,8 +62,7 @@ class CarlaWorld:
             sensor.destroy()
         self.sensor_list = []
 
-    def begin_data_acquisition(self, sensor_attrs, frames_to_record_one_ego=1, 
-                            timestamps=[], egos_to_run=10): 
+    def begin_data_acquisition(self, sensor_attrs, frames_to_record_one_ego=1, timestamps=[], egos_to_run=10): 
         current_ego_recorded_frames = 0
         ego_vehicle = random.choice([x for x in self.world.get_actors().filter("vehicle.*") if x.type_id not in
                     ['vehicle.audi.tt', 'vehicle.carlamotors.carlacola', 'vehicle.volkswagen.t2']])

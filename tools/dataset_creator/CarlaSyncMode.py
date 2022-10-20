@@ -1,8 +1,8 @@
 import sys
 
-from team_code_transfuser import dataset_creator
+from carla_settings import carla_egg_path
 try:
-    sys.path.append(dataset_creator.carla_egg_path)
+    sys.path.append(carla_egg_path)
 except IndexError:
     pass
 import carla
@@ -24,7 +24,7 @@ class CarlaSyncMode(object):
 
     """
 
-    def __init__(self, world, *sensors, **kwargs):
+    def __init__(self, world, sensors, **kwargs):
         self.world = world
         self.sensors = sensors
         self.frame = None
@@ -46,7 +46,7 @@ class CarlaSyncMode(object):
 
         make_queue(self.world.on_tick)
         for sensor in self.sensors:
-            make_queue(sensor.listen)
+            make_queue(sensor.listen())
         return self
 
     def tick(self, timeout):

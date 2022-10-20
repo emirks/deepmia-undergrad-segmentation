@@ -2,9 +2,9 @@ import argparse
 import os
 import sys
 
-from team_code_transfuser import dataset_creator
+from carla_settings import carla_egg_path
 try:
-    sys.path.append(dataset_creator.carla_egg_path)
+    sys.path.append(carla_egg_path)
 except IndexError:
     pass
 import carla
@@ -16,19 +16,34 @@ from CarlaWorld import CarlaWorld
 from HDF5Saver import HDF5Saver
 
 SEM_COLORS = {
-    1 : (70, 70, 256),
+    0 : (0, 0, 0),
+    1 : (70, 70, 70),
+    2 : (100, 40, 40),
+    3 : (55, 90, 80),
     4 : (220, 20, 60), #pedestrian
     5 : (153, 153, 153), #pole
     6 : (157, 234, 50), #road line
     7 : (128, 64, 128), #road
     8 : (244, 35, 232),  #side walk
+    9 : (107, 142, 35),
     10: (0, 0, 142), #vehicles
-    18: (250, 170, 30), #traffic-light
+    11 : (102, 102, 156),
+    12 : (220, 220, 0),
+    13 : (70, 130, 180),
+    14 : (81, 0, 81),
+    15 : (150, 100, 100),
+    16 : (230, 150, 140),
+    17 : (180, 165, 180),
+    18 : (250, 170, 30), #traffic-light
+    19 : (110, 190, 160),
+    20 : (170, 120, 50),
+    21 : (45, 60, 150),
+    22 : (145, 170, 100)
 }
 
 def visualize_semantic(sem, labels=[4,5,6,7,10,18]):
     canvas = np.zeros(sem.shape+(3,), dtype=np.uint8)
-    for i,label in enumerate(labels):
+    for label in SEM_COLORS.keys():
         canvas[sem==label] = SEM_COLORS[label]
 
     return canvas
@@ -40,7 +55,7 @@ def create_video_sample(hdf5_file, frame_width, frame_height):
 
         for time_idx, time in enumerate(file['timestamps']['timestamps']):
             rgb_data = np.array(file['rgb'][str(time)])
-            semantic_data = np.array(file['semantic'][str(time)])
+            semantic_data = np.array(file['semantic_segmentation'][str(time)])
 
             sys.stdout.write("\r")
             sys.stdout.write('Recording video. Frame {0}/{1}'.format(time_idx, len(file['timestamps']['timestamps'])))
@@ -62,6 +77,7 @@ if __name__ == "__main__":
     parser.add_argument('-he', '--height', default=768, type=int, help="sensor heights in pixels")
     parser.add_argument('-ve', '--vehicles', default=100, type=int, help="number of vehicles to spawn in the simulation")
     parser.add_argument('-wa', '--walkers', default=150, type=int, help="number of walkers to spawn in the simulation")
+    parser.add_argument('--no-rendering',action='store_true', help='disable rendering')
     parser.add_argument('-v', '--video', action="store_true", help="record a mp4 video on top of the recorded hdf5 file")
     parser.add_argument('-d', '--depth', action='store_true', help="show the depth video side by side with the rgb")
     args = parser.parse_args()
@@ -90,29 +106,30 @@ if __name__ == "__main__":
     sensor_attrs = [rgb_camera, semantic_camera]
 
     # Beginning data capture proccedure
-    HDF5_file = HDF5Saver(os.path.join("data", args.hdf5_file + ".hdf5"))
+    save_path = "/home/transfuser/autonomous_car/transfuser-erkam/semantic-segmentation-dataset"
+    HDF5_file = HDF5Saver(os.path.join(save_path, args.hdf5_file + ".hdf5"))
     print("HDF5 File opened")
-    CarlaWorld = CarlaWorld(HDF5_file=HDF5_file)
+    carla_world = CarlaWorld(HDF5_file, args.no_rendering)
 
     timestamps = []
     egos_to_run = 6
     print('Starting to record data...')
-    CarlaWorld.spawn_npcs(number_of_vehicles=args.vehicles, number_of_walkers=args.walkers)
-    for weather_option in CarlaWorld.weather_options:
-        CarlaWorld.set_weather(weather_option)
+    carla_world.spawn_npcs(number_of_vehicles=args.vehicles, number_of_walkers=args.walkers)
+    for weather_option in carla_world.weather_options:
+        carla_world.set_weather(weather_option)
         ego_vehicle_iteration = 0
         while ego_vehicle_iteration < egos_to_run:
-            CarlaWorld.begin_data_acquisition(sensor_attrs=sensor_attrs, frames_to_record_one_ego=2, 
+            carla_world.begin_data_acquisition(sensor_attrs=sensor_attrs, frames_to_record_one_ego=2, 
                                             timestamps=timestamps, egos_to_run=egos_to_run)
             print('Setting another vehicle as EGO.')
             ego_vehicle_iteration += 1
 
-    CarlaWorld.remove_npcs()
+    carla_world.remove_npcs()
     print('Finished simulation.')
     print('Saving timestamps...')
-    CarlaWorld.HDF5_file.record_all_timestamps(timestamps)
+    carla_world.hdf5_file.record_all_timestamps(timestamps)
     HDF5_file.close_HDF5()
 
     # For later visualization
     if args.video:
-        create_video_sample(os.path.join('data', args.hdf5_file + ".hdf5"), args.width, args.height)
+        create_video_sample(os.path.join(save_path, args.hdf5_file + ".hdf5"), args.width, args.height)
