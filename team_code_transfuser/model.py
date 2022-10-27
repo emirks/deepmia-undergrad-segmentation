@@ -8,7 +8,7 @@ from geometric_fusion import GeometricFusionBackbone
 from late_fusion import LateFusionBackbone
 from latentTF import latentTFBackbone
 from point_pillar import PointPillarNet
-from segmentation.model import SemanticSegmentation
+from segmentation.models.ERFNet.model import SemanticSegmentation
 
 from PIL import Image, ImageFont, ImageDraw
 from torchvision import models

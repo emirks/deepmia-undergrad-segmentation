@@ -4,32 +4,22 @@ from torchvision import transforms
 
 from PIL import Image
 
-from model import SemanticSegmentation
+from models.ERFNet.model import SemanticSegmentation
 from utils import log_eval_info
 
-class ERFNet(nn.Module):
-    def __init__(self, seg_channels):
-
-        super().__init__()
-
-        self.erfnet = SemanticSegmentation(len(seg_channels)+1)
-
-    def forward(self, rgb):
-
-        return self.erfnet(rgb)
 
 num_classes = 5
-seg_channels = [4,6,7,10]
+seg_channels = [4,6,7,8,10]
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def main(args):
     torch.manual_seed(args.seed)
 
-    seg_model = ERFNet(seg_channels).to(device)
+    seg_model = SemanticSegmentation(len(seg_channels) + 1).to(device)
 
     # Load model
     load_dir = "."
-    load_path = f'{load_dir}/seg_1.th'
+    load_path = f'{load_dir}/seg_model2.th'
 
     seg_model.load_state_dict(torch.load(load_path))
     seg_model.eval()
@@ -37,9 +27,9 @@ def main(args):
 
     # read the input and make it ready for the model
     #input_img = Image.open("assets/cityscapes-ex.png")
-    input_img = Image.open("assets/carla-ex.jpeg")
+    input_img = Image.open("assets/1301.jpg")
     transform = transforms.Compose([
-        transforms.Resize((168, 336), Image.BILINEAR), 
+        #transforms.Resize((336, 672), Image.BILINEAR), 
         transforms.ToTensor(),
     ])
     input_img = transform(input_img).unsqueeze(0).to(device)

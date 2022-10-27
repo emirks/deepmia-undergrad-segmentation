@@ -12,7 +12,7 @@ SEM_COLORS = {
     18: (220, 220, 0),
 }
 
-def visualize_semantic_processed(sem, labels=[4,6,7,10]):
+def visualize_semantic_processed(sem, labels=[4,6,7,8,10]):
     canvas = np.zeros(sem.shape+(3,), dtype=np.uint8)
     for i,label in enumerate(labels):
         canvas[sem==i+1] = SEM_COLORS[label]

@@ -77,7 +77,6 @@ if __name__ == "__main__":
     parser.add_argument('-he', '--height', default=768, type=int, help="sensor heights in pixels")
     parser.add_argument('-ve', '--vehicles', default=100, type=int, help="number of vehicles to spawn in the simulation")
     parser.add_argument('-wa', '--walkers', default=150, type=int, help="number of walkers to spawn in the simulation")
-    parser.add_argument('--no-rendering',action='store_true', help='disable rendering')
     parser.add_argument('-v', '--video', action="store_true", help="record a mp4 video on top of the recorded hdf5 file")
     parser.add_argument('-d', '--depth', action='store_true', help="show the depth video side by side with the rgb")
     args = parser.parse_args()
@@ -85,6 +84,7 @@ if __name__ == "__main__":
     assert(args.width > 0 and args.height > 0)
 
     # sensor_setup
+    sensor_transform = carla.Transform(carla.Location(x=1.0, z=2.0))
     rgb_camera = {
         "name" : 'sensor.camera.rgb',
         "carla_attr" : {
@@ -92,7 +92,7 @@ if __name__ == "__main__":
             'image_size_y': str(args.height),
             'fov': str(90)
         },
-        "attach_transform" : carla.Transform(carla.Location(x=1.0, z=2.0))
+        "attach_transform" : sensor_transform
     }
     semantic_camera = {
         "name" : 'sensor.camera.semantic_segmentation',
@@ -101,7 +101,7 @@ if __name__ == "__main__":
             'image_size_y': str(args.height),
             'fov': str(90)
         },
-        "attach_transform" : carla.Transform(carla.Location(x=1.0, z=2.0))
+        "attach_transform" : sensor_transform
     }
     sensor_attrs = [rgb_camera, semantic_camera]
 
@@ -109,25 +109,26 @@ if __name__ == "__main__":
     save_path = "/home/transfuser/autonomous_car/transfuser-erkam/semantic-segmentation-dataset"
     HDF5_file = HDF5Saver(os.path.join(save_path, args.hdf5_file + ".hdf5"))
     print("HDF5 File opened")
-    carla_world = CarlaWorld(HDF5_file, args.no_rendering)
 
     timestamps = []
-    egos_to_run = 6
+    egos_to_run = 1
     print('Starting to record data...')
-    carla_world.spawn_npcs(number_of_vehicles=args.vehicles, number_of_walkers=args.walkers)
-    for weather_option in carla_world.weather_options:
-        carla_world.set_weather(weather_option)
-        ego_vehicle_iteration = 0
-        while ego_vehicle_iteration < egos_to_run:
-            carla_world.begin_data_acquisition(sensor_attrs=sensor_attrs, frames_to_record_one_ego=2, 
-                                            timestamps=timestamps, egos_to_run=egos_to_run)
-            print('Setting another vehicle as EGO.')
-            ego_vehicle_iteration += 1
-
-    carla_world.remove_npcs()
+    town_options = carla.Client('localhost', 2000).get_available_maps()
+    for town_option in town_options:
+        carla_world = CarlaWorld(town_option, HDF5_file)
+        carla_world.spawn_npcs(number_of_vehicles=args.vehicles, number_of_walkers=args.walkers)
+        for weather_option in carla_world.weather_options:
+            carla_world.set_weather(weather_option)
+            ego_vehicle_iteration = 0
+            while ego_vehicle_iteration < egos_to_run:
+                carla_world.begin_data_acquisition(sensor_attrs=sensor_attrs, frames_to_record_one_ego=2, 
+                                                timestamps=timestamps, egos_to_run=egos_to_run)
+                print('Setting another vehicle as EGO.')
+                ego_vehicle_iteration += 1
+        carla_world.remove_npcs()
+        print('Saving timestamps...')
+        carla_world.hdf5_file.record_all_timestamps(timestamps)
     print('Finished simulation.')
-    print('Saving timestamps...')
-    carla_world.hdf5_file.record_all_timestamps(timestamps)
     HDF5_file.close_HDF5()
 
     # For later visualization

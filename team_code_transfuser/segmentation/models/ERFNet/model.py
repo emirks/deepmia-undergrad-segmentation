@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-from encoder import SemanticSegmentationEncoder
-from decoder import SemanticSegmentationDecoder
+from .encoder import SemanticSegmentationEncoder
+from .decoder import SemanticSegmentationDecoder
 
 
 class SemanticSegmentation(nn.Module): 

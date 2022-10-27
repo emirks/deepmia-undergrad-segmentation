@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from encoder import non_bottleneck_1d
+from .encoder import non_bottleneck_1d
 
 class Upsampler(nn.Module): 
     """
