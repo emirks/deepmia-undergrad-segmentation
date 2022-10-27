@@ -4,7 +4,7 @@ from torchvision import transforms
 
 from PIL import Image
 
-from model import SemanticSegmentation
+from models.ERFNet.model import SemanticSegmentation
 from utils import log_eval_info
 
 class ERFNet(nn.Module):
@@ -37,9 +37,9 @@ def main(args):
 
     # read the input and make it ready for the model
     #input_img = Image.open("assets/cityscapes-ex.png")
-    input_img = Image.open("assets/carla-ex.jpeg")
+    input_img = Image.open("assets/cityscapes-ex.jpeg")
     transform = transforms.Compose([
-        transforms.Resize((168, 336), Image.BILINEAR), 
+        transforms.Resize((336, 672), Image.BILINEAR), 
         transforms.ToTensor(),
     ])
     input_img = transform(input_img).unsqueeze(0).to(device)

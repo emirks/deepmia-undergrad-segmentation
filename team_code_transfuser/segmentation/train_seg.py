@@ -6,7 +6,7 @@ from torchvision import datasets
 from torchvision.transforms import ToTensor
 import tqdm
 
-from model import SemanticSegmentation
+from models.ERFNet.model import SemanticSegmentation
 from utils import log_train_info
 
 num_classes = 5
