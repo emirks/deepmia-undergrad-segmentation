@@ -7,6 +7,7 @@ except IndexError:
     pass
 import carla
 import numpy as np
+import cv2
 
 
 class Sensor: 
@@ -19,7 +20,6 @@ class Sensor:
         self.height = int(self.sensor_attr["carla_attr"]["image_size_y"])
 
         self.sensor = None
-        self.idx = 0
 
     def create(self, world, vehicle): 
         bp = world.get_blueprint_library().find(self.sensor_attr["name"])
@@ -31,6 +31,7 @@ class Sensor:
         return self.sensor.listen
 
     def process_data(self, data): 
+        frame = data.frame
         data = np.frombuffer(data.raw_data, dtype=np.dtype("uint8"))
         data = np.reshape(data, (self.height, self.width, 4))
         data = data[:, :, :3] #taking out opacity channel
@@ -46,6 +47,12 @@ class Sensor:
             data = depth_meters
         elif self.sensor_name == 'semantic_segmentation': 
             data = data[:, :, 0] #only r channel -> semantic values are in the r channel
+        save_path = "/home/transfuser/autonomous_car/transfuser-erkam/semantic-segmentation-dataset"
+        if self.sensor_name == 'rgb': 
+            cv2.imwrite(f"{save_path}/rgb/{frame}.jpg", data)
+        elif self.sensor_name == 'semantic_segmentation': 
+            cv2.imwrite(f"{save_path}/semantic/{frame}.jpg", data)
+        
         return data
 
     def destroy(self): 

@@ -3,7 +3,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from collections import defaultdict
 
-from PIL import Image
+import cv2
 
 def filter_sem(sem, labels=[4,6,7,8,10]):
     resem = np.zeros_like(sem)
@@ -45,8 +45,8 @@ class SegmentationDataset(Dataset):
         if(rgb_image_name != sem_image_name): 
             raise Exception(f"Name of rgb and semantic file are not same for index {index}")
 
-        rgb_image = Image.open(self.rgb_image_paths[index])
-        sem_image = Image.open(self.semantic_image_paths[index])
+        rgb_image = cv2.imread(self.rgb_image_paths[index], cv2.IMREAD_COLOR)
+        sem_image = cv2.imread(self.semantic_image_paths[index], cv2.IMREAD_GRAYSCALE)
         sem_image = filter_sem(sem_image)
 
         return rgb_image, sem_image
@@ -55,5 +55,5 @@ if __name__ == '__main__':
     dataset = SegmentationDataset()
 
     import tqdm
-    for t in tqdm.tqdm(range(200)):
+    for t in tqdm.tqdm(range(1500)):
         dataset[t]

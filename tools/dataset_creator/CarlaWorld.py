@@ -16,26 +16,21 @@ from CarlaSyncMode import CarlaSyncMode
 from HDF5Saver import HDF5Saver
 
 class CarlaWorld: 
-    def __init__(self, hdf5_file, no_rendering=False):
+    def __init__(self, town, hdf5_file):
         self.hdf5_file = hdf5_file
         self.client = carla.Client('localhost', 2000)
         self.client.set_timeout(20.0)
-        self.world = self.client.get_world()
-        print('Successfully connected to CARLA')
-        settings = self.world.get_settings()
-        if no_rendering:
-            print('Rendering disabled.')
-            settings.no_rendering_mode = True
-            self.world.apply_settings(settings)
-
+        self.world = self.client.load_world(town)
         self.blueprint_library = self.world.get_blueprint_library()
+        print('Successfully connected to CARLA')
+
         self.weather_options = WeatherSelector().get_weather_options()
         self.total_recorded_frames = 0
 
         self.sensor_list = []
 
         self.simulation_new_started = True
-        self.frame_interval = 5
+        self.frame_interval = 5    
 
     def set_weather(self, weather_option): 
         weather = carla.WeatherParameters(*weather_option)
@@ -44,7 +39,7 @@ class CarlaWorld:
     
     def spawn_npcs(self, number_of_vehicles, number_of_walkers): 
         self.NPC = CarlaNPC(self.client)
-        self.wehicles, _ = self.NPC.create_npcs(number_of_vehicles, number_of_walkers)
+        self.vehicles, _ = self.NPC.create_npcs(number_of_vehicles, number_of_walkers)
 
     def remove_npcs(self): 
         print("Destroying actors...")
@@ -95,7 +90,7 @@ class CarlaWorld:
                 for i in range(len(self.sensor_list)):
                     sensor = self.sensor_list[i]
                     processed_sensor_data = sensor.process_data(sensor_datas[i]) 
-                    self.hdf5_file.record_data(sensor.sensor_name, processed_sensor_data, timestamp)
+                    #self.hdf5_file.record_data(sensor.sensor_name, processed_sensor_data, timestamp)
                 
                 current_ego_recorded_frames += 1
                 self.total_recorded_frames += 1

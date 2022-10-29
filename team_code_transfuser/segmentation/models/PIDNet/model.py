@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import time
 import logging
 
-from model_utils import BasicBlock, Bottleneck, SegmentHead, DAPPM, PAPPM, Pag, Bag, LightBag
+from .model_utils import BasicBlock, Bottleneck, SegmentHead, DAPPM, PAPPM, Pag, Bag, LightBag
 
 bn_mom = 0.1
 algc = False
