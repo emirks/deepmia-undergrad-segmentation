@@ -162,3 +162,7 @@ cython_debug/
 results/
 model_ckpt/
 data/
+
+team_code_transfuser/segmentation/logs
+team_code_transfuser/segmentation/assets
+team_code_transfuser/segmentation/pretrained

@@ -48,10 +48,10 @@ class Sensor:
         elif self.sensor_name == 'semantic_segmentation': 
             data = data[:, :, 0] #only r channel -> semantic values are in the r channel
         save_path = "/home/transfuser/autonomous_car/transfuser-erkam/semantic-segmentation-dataset"
-        if self.sensor_name == 'rgb': 
-            cv2.imwrite(f"{save_path}/rgb/{frame}.jpg", data)
-        elif self.sensor_name == 'semantic_segmentation': 
-            cv2.imwrite(f"{save_path}/semantic/{frame}.jpg", data)
+        # if self.sensor_name == 'rgb': 
+        #     cv2.imwrite(f"{save_path}/rgb/{frame}.jpg", data)
+        # elif self.sensor_name == 'semantic_segmentation': 
+        #     cv2.imwrite(f"{save_path}/semantic/{frame}.jpg", data)
         
         return data
 

@@ -3,16 +3,16 @@ from torch import nn, optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torchvision import datasets
-from torchvision.transforms import ToTensor
+from torchvision.transforms import ToTensor, Resize
 import tqdm
 
 #from models.ERFNet.model import SemanticSegmentation
 from models.PIDNet.model import get_pred_model
 from seg_dataset import SegmentationDataset
-from utils import log_train_info
+from utils import log_train_info, labels
 
 num_classes = 5
-seg_channels = [4,6,7,8,10]
+seg_channels = labels
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.cuda.empty_cache()
 
@@ -23,6 +23,8 @@ def train_seg(rgb, sem, model, optim, visualize_log):
     sem = sem.long().to(device) 
 
     pred_sem = model(rgb)
+    resize = Resize(size = (sem.shape[1], sem.shape[2]))
+    pred_sem = resize(pred_sem)
 
     loss = F.cross_entropy(pred_sem, sem)
 
@@ -37,7 +39,7 @@ def train_seg(rgb, sem, model, optim, visualize_log):
             sem = sem[0].cpu().detach().numpy(),
             pred_sem = pred_sem[0].cpu().detach().numpy().argmax(0)
         )
-        log_train_info(seg_info)
+        log_train_info(seg_info, it // args.num_per_log)
 
 
     del rgb, sem, pred_sem, loss

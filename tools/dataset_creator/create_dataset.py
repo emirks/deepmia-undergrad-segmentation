@@ -111,7 +111,7 @@ if __name__ == "__main__":
     print("HDF5 File opened")
 
     timestamps = []
-    egos_to_run = 1
+    egos_to_run = 2
     print('Starting to record data...')
     town_options = carla.Client('localhost', 2000).get_available_maps()
     for town_option in town_options:
@@ -121,7 +121,7 @@ if __name__ == "__main__":
             carla_world.set_weather(weather_option)
             ego_vehicle_iteration = 0
             while ego_vehicle_iteration < egos_to_run:
-                carla_world.begin_data_acquisition(sensor_attrs=sensor_attrs, frames_to_record_one_ego=2, 
+                carla_world.begin_data_acquisition(sensor_attrs=sensor_attrs, frames_to_record_one_ego=5, 
                                                 timestamps=timestamps, egos_to_run=egos_to_run)
                 print('Setting another vehicle as EGO.')
                 ego_vehicle_iteration += 1

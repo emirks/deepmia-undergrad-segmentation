@@ -4,11 +4,16 @@ from torch.utils.data import Dataset
 from collections import defaultdict
 
 import cv2
+from utils import SEM_COLORS, labels
 
-def filter_sem(sem, labels=[4,6,7,8,10]):
+def filter_sem(sem, labels=labels):
     resem = np.zeros_like(sem)
+    colored = np.zeros(sem.shape, dtype=np.uint8)
     for i, label in enumerate(labels):
         resem[sem==label] = i+1
+        colored[sem==label] = SEM_COLORS[label]
+    cv2.imshow("colored", colored)
+    cv2.waitKey(0)
     
     return resem
 
@@ -48,6 +53,7 @@ class SegmentationDataset(Dataset):
         rgb_image = cv2.imread(self.rgb_image_paths[index], cv2.IMREAD_COLOR)
         sem_image = cv2.imread(self.semantic_image_paths[index], cv2.IMREAD_GRAYSCALE)
         sem_image = filter_sem(sem_image)
+        #sem_image = cv2.resize(sem_image, (128, 64))
 
         return rgb_image, sem_image
 

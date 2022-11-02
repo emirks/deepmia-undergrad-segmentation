@@ -3,19 +3,22 @@ from torch import nn
 from torchvision import transforms
 
 from PIL import Image
+import cv2
 
-from models.ERFNet.model import SemanticSegmentation
-from utils import log_eval_info
+#from models.ERFNet.model import SemanticSegmentation
+from models.PIDNet.model import get_pred_model
+from utils import log_eval_info, labels
 
 
 num_classes = 5
-seg_channels = [4,6,7,8,10]
+seg_channels = labels
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def main(args):
     torch.manual_seed(args.seed)
 
-    seg_model = SemanticSegmentation(len(seg_channels) + 1).to(device)
+    seg_model = get_pred_model("PIDNet-m", len(seg_channels) + 1).to(device)
+    #seg_model = SemanticSegmentation(len(seg_channels) + 1).to(device)
 
     # Load model
     load_dir = "."
@@ -27,7 +30,9 @@ def main(args):
 
     # read the input and make it ready for the model
     #input_img = Image.open("assets/cityscapes-ex.png")
-    input_img = Image.open("assets/1301.jpg")
+    #input_img = Image.open("assets/41312.jpg")
+    input_img = cv2.imread("assets/41312.jpg", cv2.IMREAD_COLOR)
+
     transform = transforms.Compose([
         #transforms.Resize((336, 672), Image.BILINEAR), 
         transforms.ToTensor(),
