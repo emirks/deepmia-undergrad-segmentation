@@ -1,65 +1,65 @@
 import torch
 from torch import nn
 from torchvision import transforms
+from torch.utils.data import DataLoader
+from torch.utils.data._utils import collate
 
-from PIL import Image
 import cv2
 
-#from models.ERFNet.model import SemanticSegmentation
 from models.PIDNet.model import get_pred_model
-from utils import log_eval_info, labels
+import config
+from utils import log_eval_info
+from seg_dataset import SegmentationDataset
 
 
-num_classes = 5
-seg_channels = labels
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
+def load_pretrained(model, pretrained_path):
+    pretrained_dict = torch.load(pretrained_path, map_location='cpu')
+    if 'state_dict' in pretrained_dict:
+        pretrained_dict = pretrained_dict['state_dict']
+    model_dict = model.state_dict()
+    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict} 
+    # pretrained_dict = {k[6:]: v for k, v in pretrained_dict.items() if (k[6:] in model_dict and v.shape == model_dict[k[6:]].shape)}
+    msg = 'Loaded {} parameters!'.format(len(pretrained_dict))
+    print('Attention!!!')
+    print(msg)
+    print('Over!!!')
+    model_dict.update(pretrained_dict)
+    model.load_state_dict(model_dict, strict = False)
+    
+    return model
 
 def main(args):
     torch.manual_seed(args.seed)
 
-    seg_model = get_pred_model("PIDNet-m", len(seg_channels) + 1).to(device)
-    #seg_model = SemanticSegmentation(len(seg_channels) + 1).to(device)
+    seg_model = get_pred_model("PIDNet-m", len(config.labels) + 1).to(device)
 
     # Load model
-    load_dir = "."
-    load_path = f'{load_dir}/seg_model2.th'
-
-    seg_model.load_state_dict(torch.load(load_path))
+    load_path = f'./pretrained/{args.load_path}.th'
+    seg_model = load_pretrained(seg_model, load_path)
     seg_model.eval()
     print ("Model and weights loaded successfully")
 
-    # read the input and make it ready for the model
-    #input_img = Image.open("assets/cityscapes-ex.png")
-    #input_img = Image.open("assets/41312.jpg")
-    input_img = cv2.imread("assets/41312.jpg", cv2.IMREAD_COLOR)
-
-    transform = transforms.Compose([
-        #transforms.Resize((336, 672), Image.BILINEAR), 
-        transforms.ToTensor(),
-    ])
-    input_img = transform(input_img).unsqueeze(0).to(device)
-
     with torch.no_grad(): 
-        output = seg_model(input_img)
+        input_img = cv2.imread("assets/2555.jpg", cv2.IMREAD_COLOR)
+        input_img = collate.default_collate(input_img).unsqueeze(0)
+        input_img = input_img.float().permute(0,3,1,2).to(device)
+        pred_sem = seg_model(input_img)
+        resize = transforms.Resize(size = (input_img.shape[2], input_img.shape[3]))
+        pred_sem = resize(pred_sem)
 
-    seg_info = dict(
-        rgb = input_img[0].permute(1,2,0).cpu().detach().numpy(),
-        pred_sem = output[0].max(0)[1].cpu().detach().numpy()
-    )
-    log_eval_info(seg_info)
-
-    # label = output[0].max(0)[1].byte().cpu().data
-    # label_colored = Colorize()(label.unsqueeze(0))
-
-    # label_colored = transforms.ToPILImage()(label_colored)
-    # label_colored.save("cityscapes-ex-label.png")
-
+        seg_info = dict(
+            rgb = input_img[0].permute(1,2,0).byte().cpu().detach().numpy(),
+            pred_sem = pred_sem[0].cpu().detach().numpy().argmax(0)
+        )
+        log_eval_info(seg_info)
 
 if __name__ == "__main__": 
     import argparse
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--load-dir')
+    parser.add_argument('--load-path')
     # Reproducibility
     parser.add_argument('--seed', type=int, default=2021)
 

@@ -9,6 +9,7 @@ from .model_utils import BasicBlock, Bottleneck, SegmentHead, DAPPM, PAPPM, Pag,
 
 bn_mom = 0.1
 algc = False
+batch_norm = nn.BatchNorm2d
 
 class PIDNet(nn.Module): 
     def __init__(self, m, n, num_classes=19, planes=64, ppm_planes=96, head_planes=128, augment=True):
@@ -19,10 +20,10 @@ class PIDNet(nn.Module):
 
         self.conv1 = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=planes, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(planes, momentum=bn_mom), 
+            batch_norm(planes, momentum=bn_mom), 
             nn.ReLU(inplace=True),
             nn.Conv2d(planes, planes, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(planes, momentum=bn_mom), 
+            batch_norm(planes, momentum=bn_mom), 
             nn.ReLU(inplace=True)
         )
         self.layer1 = self._make_layer(BasicBlock, planes, planes, m)
@@ -46,11 +47,11 @@ class PIDNet(nn.Module):
         self.layer4_pag = Pag(planes * 2, planes)
         self.layer3_compression = nn.Sequential(
             nn.Conv2d(planes * 4, planes * 2, kernel_size=1, bias=False),
-            nn.BatchNorm2d(planes * 2, momentum=bn_mom)
+            batch_norm(planes * 2, momentum=bn_mom)
         )
         self.layer4_compression = nn.Sequential(
             nn.Conv2d(planes * 8, planes * 2, kernel_size=1, bias=False),
-            nn.BatchNorm2d(planes * 2, momentum=bn_mom)
+            batch_norm(planes * 2, momentum=bn_mom)
         )
 
         # D Branch
@@ -62,11 +63,11 @@ class PIDNet(nn.Module):
             self.layer4_d = self._make_single_layer(BasicBlock, planes * 2, planes * 2)
         self.layer3_diff = nn.Sequential(
             nn.Conv2d(planes * 4, planes, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(planes, momentum=bn_mom)
+            batch_norm(planes, momentum=bn_mom)
         )
         self.layer4_diff = nn.Sequential(
             nn.Conv2d(planes * 8, planes * 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(planes * 2, momentum=bn_mom)
+            batch_norm(planes * 2, momentum=bn_mom)
         )
         self.layer5_d = self._make_layer(Bottleneck, planes * 2, planes * 2, 1)
 
@@ -98,7 +99,7 @@ class PIDNet(nn.Module):
             downsample = nn.Sequential(
                 nn.Conv2d(inplanes, outplanes * block.expansion, 
                         kernel_size=1, stride=stride, bias=False), 
-                nn.BatchNorm2d(outplanes * block.expansion, momentum=bn_mom)
+                batch_norm(outplanes * block.expansion, momentum=bn_mom)
             )
         
         layers = []
@@ -118,7 +119,7 @@ class PIDNet(nn.Module):
             downsample = nn.Sequential(
                 nn.Conv2d(inplanes, outplanes * block.expansion, 
                         kernel_size=1, stride=stride, bias=False), 
-                nn.BatchNorm2d(outplanes * block.expansion, momentum=bn_mom)
+                batch_norm(outplanes * block.expansion, momentum=bn_mom)
             )
 
         layer = block(inplanes, outplanes, stride, downsample, apply_relu=False)

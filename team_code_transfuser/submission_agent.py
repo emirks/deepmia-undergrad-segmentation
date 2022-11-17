@@ -20,7 +20,8 @@ from shapely.geometry import Polygon
 
 import itertools
 import pathlib
-SAVE_PATH = os.environ.get('SAVE_PATH')
+#SAVE_PATH = os.environ.get('SAVE_PATH')
+SAVE_PATH = os.environ.get('WORK_DIR') + "/model-outputs/"
 
 if not SAVE_PATH:
     SAVE_PATH = None

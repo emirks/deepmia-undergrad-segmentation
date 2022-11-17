@@ -12,6 +12,7 @@ import cv2
 
 class Sensor: 
     def __init__(self, sensor_attr):
+        self.sensor_id = sensor_attr["id"]
         self.sensor_name = sensor_attr["name"].split(".")[-1]
         self.sensor_attr = sensor_attr
 
@@ -35,7 +36,6 @@ class Sensor:
         data = np.frombuffer(data.raw_data, dtype=np.dtype("uint8"))
         data = np.reshape(data, (self.height, self.width, 4))
         data = data[:, :, :3] #taking out opacity channel
-        data = data[:, :, ::-1]
         if self.sensor_name == 'rgb': 
             pass
         elif self.sensor_name == 'depth':
@@ -46,8 +46,9 @@ class Sensor:
             depth_meters = normalized_depth * 1000
             data = depth_meters
         elif self.sensor_name == 'semantic_segmentation': 
+            data = data[:, :, ::-1]
             data = data[:, :, 0] #only r channel -> semantic values are in the r channel
-        save_path = "/home/transfuser/autonomous_car/transfuser-erkam/semantic-segmentation-dataset"
+        # save_path = "/home/transfuser/autonomous_car/transfuser-erkam/semantic-segmentation-dataset"
         # if self.sensor_name == 'rgb': 
         #     cv2.imwrite(f"{save_path}/rgb/{frame}.jpg", data)
         # elif self.sensor_name == 'semantic_segmentation': 

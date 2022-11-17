@@ -1,18 +1,19 @@
 import torch
 from torch import nn, optim
 from torch.nn import functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from torchvision import datasets
 from torchvision.transforms import ToTensor, Resize
 import tqdm
 
-#from models.ERFNet.model import SemanticSegmentation
 from models.PIDNet.model import get_pred_model
 from seg_dataset import SegmentationDataset
-from utils import log_train_info, labels
+from utils import log_train_info, visualize_semantic_processed
+import config
 
-num_classes = 5
-seg_channels = labels
+from matplotlib import pyplot as plt
+import numpy as np
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.cuda.empty_cache()
 
@@ -23,7 +24,7 @@ def train_seg(rgb, sem, model, optim, visualize_log):
     sem = sem.long().to(device) 
 
     pred_sem = model(rgb)
-    resize = Resize(size = (sem.shape[1], sem.shape[2]))
+    resize = Resize(size = (rgb.shape[2], rgb.shape[3]))
     pred_sem = resize(pred_sem)
 
     loss = F.cross_entropy(pred_sem, sem)
@@ -33,13 +34,18 @@ def train_seg(rgb, sem, model, optim, visualize_log):
     optim.step()
 
     if visualize_log and it % args.num_per_log == 0:
-        seg_info = dict(
-            loss = float(loss), 
-            rgb = rgb[0].permute(1,2,0).byte().cpu().detach().numpy(),
-            sem = sem[0].cpu().detach().numpy(),
-            pred_sem = pred_sem[0].cpu().detach().numpy().argmax(0)
-        )
-        log_train_info(seg_info, it // args.num_per_log)
+        loss = float(loss) 
+        rgb_vis = rgb[0].permute(1,2,0).byte().cpu().detach().numpy()
+        sem_vis = sem[0].cpu().detach().numpy()
+        pred_sem_vis = pred_sem[0].cpu().detach().numpy().argmax(0)
+        f, [ax1, ax2, ax3] = plt.subplots(1,3,figsize=(32, 10))
+        f.text(.01, .99, f"loss: {loss}", size = 20, ha='left', va='top')
+        ax1.imshow(rgb_vis)
+        ax2.imshow(visualize_semantic_processed(sem_vis))
+        ax3.imshow(visualize_semantic_processed(pred_sem_vis))
+        plt.savefig(f"./logs/log-{it // args.num_per_log}.png")
+
+        #log_train_info(seg_info, it // args.num_per_log)
 
 
     del rgb, sem, pred_sem, loss
@@ -48,12 +54,12 @@ def train_seg(rgb, sem, model, optim, visualize_log):
 def main(args):
     torch.manual_seed(args.seed)
 
-    #seg_model = SemanticSegmentation(len(seg_channels) + 1).to(device)
-    seg_model = get_pred_model("PIDNet-m", len(seg_channels) + 1).to(device)
+    seg_model = get_pred_model("PIDNet-m", len(config.labels) + 1).to(device)
     seg_optim = optim.Adam(seg_model.parameters(), lr=args.lr)
     
-    dataset = SegmentationDataset()
-    dataloader = DataLoader(dataset, 
+    datasets = [SegmentationDataset(hdf5_file_name=town_name) for town_name in config.towns]
+    combined_dataset = ConcatDataset(datasets=datasets)
+    dataloader = DataLoader(combined_dataset, 
         num_workers=args.num_workers,
         batch_size=args.batch_size,
         shuffle=True,
@@ -63,12 +69,16 @@ def main(args):
 
     global it
     for epoch in range(args.num_epoch):
-        for rgb, sem in tqdm.tqdm(dataloader, desc=f'Epoch {epoch}'):
-            train_seg(rgb, sem, seg_model, seg_optim, args.visualize)            
-            it += 1
+        try: 
+            for rgb, sem in tqdm.tqdm(dataloader, desc=f'Epoch {epoch}'):
+                train_seg(rgb, sem, seg_model, seg_optim, args.visualize)            
+                it += 1
+        except KeyboardInterrupt:
+            # if someone hits ctrl+c, save it before exiting
+            print("Saving incomplete model.") 
 
     # Save model
-    seg_path = f'{args.save_path}/seg_model2.th'
+    seg_path = f'./pretrained/{args.save_path}.th'
 
     torch.save(seg_model.state_dict(), seg_path)
     print (f'saved to {seg_path}')
@@ -81,7 +91,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--config-path', default='config.yaml')
-    parser.add_argument('--save_path', default='.')
+    parser.add_argument('--save_path', default='model')
 
     parser.add_argument('--device', default='cuda', choices=['cuda', 'cpu'])
 

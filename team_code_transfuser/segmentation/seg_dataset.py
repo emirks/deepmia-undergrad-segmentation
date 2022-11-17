@@ -4,39 +4,76 @@ from torch.utils.data import Dataset
 from collections import defaultdict
 
 import cv2
-from utils import SEM_COLORS, labels
+import h5py
 
-def filter_sem(sem, labels=labels):
+import imgaug as ia
+from imgaug import augmenters as iaa
+
+import config
+
+def augment(prob=0.2):
+    
+    augmenter = iaa.Sequential([
+        iaa.Sometimes(prob, iaa.GaussianBlur((0, 0.5))),
+        iaa.Sometimes(prob, iaa.AdditiveGaussianNoise(loc=0, scale=(0., 0.05*255), per_channel=0.5)),
+        iaa.Sometimes(prob, iaa.Dropout((0.01, 0.1), per_channel=0.5)),
+        iaa.Sometimes(prob, iaa.Multiply((1/1.2, 1.2), per_channel=0.5)),
+        iaa.Sometimes(prob, iaa.LinearContrast((1/1.2, 1.2), per_channel=0.5)),
+        iaa.Sometimes(prob, iaa.Grayscale((0.0, 0.5))),
+        iaa.Sometimes(prob, iaa.ElasticTransformation(alpha=(0.5, 3.5), sigma=0.25)),
+    ], random_order=True)
+    
+    
+    return augmenter
+
+def filter_sem(sem, labels=config.labels):
     resem = np.zeros_like(sem)
-    colored = np.zeros(sem.shape, dtype=np.uint8)
     for i, label in enumerate(labels):
         resem[sem==label] = i+1
-        colored[sem==label] = SEM_COLORS[label]
-    cv2.imshow("colored", colored)
-    cv2.waitKey(0)
     
     return resem
 
 class SegmentationDataset(Dataset): 
-    def __init__(self):
+    def __init__(self, hdf5_file_name, dataset_mode="train"):
         super(SegmentationDataset, self).__init__()
         self.path = "/home/transfuser/autonomous_car/transfuser-erkam/semantic-segmentation-dataset"
 
-        self.rgb_path = f"{self.path}/rgb/*.jpg"
-        self.semantic_path = f"{self.path}/semantic/*.jpg"
+        self.rgb_datas = []
+        self.semantic_datas = []
+        hdf5_file = f"{self.path}/{hdf5_file_name}.hdf5"
+        with h5py.File(hdf5_file, 'r') as file:
+            if dataset_mode == "test": 
+                # If dataset is for testing, then only take 50 images. 
+                file_timestamps = file['timestamps']['timestamps'][:50]
+            else: 
+                file_timestamps = file['timestamps']['timestamps']
+            for time in file_timestamps:
+                rgb = []
+                semantic = []
+                for camera_id in range(len(config.camera_rots)):
+                    rgb_cam_name = f"rgb_{camera_id}"
+                    semantic_cam_name = f"semantic_{camera_id}"
+                    rgb_pos = np.array(file[rgb_cam_name][str(time)])
+                    rgb_pos = rgb_pos[config.img_width:config.img_width*2, config.img_height:config.img_height*2]
+                    semantic_pos = np.array(file[semantic_cam_name][str(time)])
+                    semantic_pos = semantic_pos[config.img_width:config.img_width*2, config.img_height:config.img_height*2]
+                    rgb.append(rgb_pos)
+                    semantic.append(semantic_pos)
+                rgb = np.concatenate(rgb, axis=1)
+                semantic = np.concatenate(semantic, axis=1)
+                height, width = rgb.shape[:2]
+                rgb = rgb[height//2 - config.img_resolution[0]//2:height//2 + config.img_resolution[0]//2, 
+                    width//2 - config.img_resolution[1]//2:width//2 + config.img_resolution[1]//2]
+                semantic = semantic[height//2 - config.img_resolution[0]//2:height//2 + config.img_resolution[0]//2, 
+                    width//2 - config.img_resolution[1]//2:width//2 + config.img_resolution[1]//2]
+                self.rgb_datas.append(rgb)
+                self.semantic_datas.append(semantic)
 
-        self.rgb_image_paths = []
-        self.semantic_image_paths = []
-        for rgb_file in glob.glob(self.rgb_path):
-            self.rgb_image_paths.append(rgb_file)
-        for semantic_file in glob.glob(self.semantic_path): 
-            self.semantic_image_paths.append(semantic_file)
-        # to ensure that rgb paths and semantic paths are in the same order
-        self.rgb_image_paths.sort()
-        self.semantic_image_paths.sort()
+        assert(len(self.rgb_datas) == len(self.semantic_datas))
+        self.size = len(self.rgb_datas)
 
-        assert(len(self.rgb_image_paths) == len(self.semantic_image_paths))
-        self.size = len(self.rgb_image_paths)
+        self.augmenter = augment(0.2)
+
 
     def __len__(self): 
         return self.size
@@ -45,21 +82,17 @@ class SegmentationDataset(Dataset):
         if index > self.size: 
             raise Exception("Index of the required dataset element is higher than size of the dataset")
         
-        rgb_image_name = self.rgb_image_paths[index].split("/")[-1]
-        sem_image_name = self.semantic_image_paths[index].split("/")[-1]
-        if(rgb_image_name != sem_image_name): 
-            raise Exception(f"Name of rgb and semantic file are not same for index {index}")
+        rgb_image = self.rgb_datas[index]
+        sem_image = self.semantic_datas[index]
+        rgb_image = self.augmenter(images=rgb_image[...,::-1][None])[0]
 
-        rgb_image = cv2.imread(self.rgb_image_paths[index], cv2.IMREAD_COLOR)
-        sem_image = cv2.imread(self.semantic_image_paths[index], cv2.IMREAD_GRAYSCALE)
         sem_image = filter_sem(sem_image)
-        #sem_image = cv2.resize(sem_image, (128, 64))
 
         return rgb_image, sem_image
 
 if __name__ == '__main__':
-    dataset = SegmentationDataset()
+    dataset = SegmentationDataset("town-1")
 
     import tqdm
-    for t in tqdm.tqdm(range(1500)):
+    for t in tqdm.tqdm(range(len(dataset))):
         dataset[t]

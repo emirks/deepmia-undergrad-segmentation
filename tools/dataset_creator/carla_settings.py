@@ -1,1 +1,2 @@
 carla_egg_path="/home/transfuser/autonomous_car/transfuser/carla/PythonAPI/carla/dist/carla-0.9.10-py3.7-linux-x86_64.egg"
+team_code_path="/home/transfuser/autonomous_car/transfuser-erkam/Deepmia-CarlaProject/"

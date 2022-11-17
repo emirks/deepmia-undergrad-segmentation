@@ -8,7 +8,8 @@ from geometric_fusion import GeometricFusionBackbone
 from late_fusion import LateFusionBackbone
 from latentTF import latentTFBackbone
 from point_pillar import PointPillarNet
-from segmentation.models.ERFNet.model import SemanticSegmentation
+from segmentation.models.PIDNet import model as SemanticSegmentation 
+from segmentation.utils import visualize_semantic_processed
 
 from PIL import Image, ImageFont, ImageDraw
 from torchvision import models
@@ -16,6 +17,8 @@ from torchvision import models
 # Copyright (c) OpenMMLab. All rights reserved.
 import torch
 import torch.nn as nn
+from torch.utils.data._utils import collate
+from torchvision import transforms
 from mmcv.cnn import bias_init_with_prob, normal_init
 from mmcv.ops import batched_nms
 from mmcv.runner import force_fp32
@@ -572,7 +575,7 @@ class LidarCenterNet(nn.Module):
             raise("The chosen vision backbone does not exist. The options are: transFuser, late_fusion, geometric_fusion, latentTF")
 
         if config.multitask:
-            self.seg_decoder   = SegDecoder(self.config,   self.config.perception_output_features).to(self.device)
+            #self.seg_decoder   = SegDecoder(self.config,   self.config.perception_output_features).to(self.device)
             self.depth_decoder = DepthDecoder(self.config, self.config.perception_output_features).to(self.device)
 
         channel = config.channel
@@ -608,7 +611,7 @@ class LidarCenterNet(nn.Module):
         self.speed_controller = PIDController(K_P=config.speed_KP, K_I=config.speed_KI, K_D=config.speed_KD, n=config.speed_n)
 
         # semantic segmentation
-        self.seg_model = SemanticSegmentation(self.config.num_class)
+        self.seg_model = SemanticSegmentation.get_pred_model("PIDNet-m", self.config.num_class).to(device)
         if self.config.load_seg_model: 
             self.seg_model.load_state_dict(torch.load(self.config.seg_model_path))
 
@@ -725,11 +728,21 @@ class LidarCenterNet(nn.Module):
             pred_bev = self.pred_bev(features[0])
             pred_bev = F.interpolate(pred_bev, (self.config.bev_resolution_height, self.config.bev_resolution_width), mode='bilinear', align_corners=True)
             # pred_semantic = self.seg_decoder(image_features_grid)
-            
-            # current image format : torch tensor([1, 3, 160, 704])
-            # required image format for seg_model : torch.tensor([1, 3, H, W])
-            # it should work properly
-            pred_semantic = self.seg_model(rgb)
+            # pred_semantics = []
+            # rgb_numpy = rgb.clone().detach().cpu().numpy()
+            # resize = lambda input, y, x : transforms.Resize(size = (y, x))(input)
+            # for i in range(3): 
+            #     semantic_input = rgb_numpy[:, :, :, i*224:(i + 1)*224]
+            #     semantic_input = collate.default_collate(semantic_input).float().to(self.device) 
+            #     pred_semantic = self.seg_model(semantic_input)[0]
+            #     pred_semantics.append(resize(pred_semantic, semantic_input.shape[2], semantic_input.shape[3]))
+            # pred_semantic = torch.cat(pred_semantics, dim=2)
+            # print(pred_semantic.shape)
+            # pred_semantic = resize(pred_semantic, rgb_numpy.shape[2], rgb_numpy.shape[3])
+            semantic_input = collate.default_collate(rgb.cpu().detach().numpy()).float().to(self.device)
+            pred_semantic = self.seg_model(semantic_input)[0]
+            resize = transforms.Resize(size = (semantic_input.shape[2], semantic_input.shape[3]))
+            pred_semantic = resize(pred_semantic)
             pred_depth = self.depth_decoder(image_features_grid)
 
             self.visualize_model_io(save_path, self.i, self.config, rgb, lidar_bev, target_point,
@@ -954,8 +967,8 @@ class LidarCenterNet(nn.Module):
 
             depth_image = pred_depth[i].detach().cpu().numpy()
 
-            indices = np.argmax(pred_semantic.detach().cpu().numpy(), axis=1)
-            semantic_image = converter[indices[i, ...], ...].astype('uint8')
+            indices = pred_semantic.detach().cpu().numpy().argmax(0)
+            semantic_image = visualize_semantic_processed(indices)
 
             ds_image = np.stack((depth_image, depth_image, depth_image), axis=2)
             ds_image = (ds_image * 255).astype(np.uint8)
@@ -1039,3 +1052,4 @@ class LidarCenterNet(nn.Module):
         images = np.concatenate((rgb_image, images), axis=0)
 
         cv2.imwrite(str(save_path + ("/%d.png" % (step // 2))), images)
+        #cv2.imwrite(str(save_path + ("/%d-rgb.png" % (step // 2))), rgb_image)
