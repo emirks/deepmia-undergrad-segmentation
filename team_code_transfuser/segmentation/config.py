@@ -42,3 +42,6 @@ camera_rot_2 = [0.0, 0.0, 60.0] # Roll Pitch Yaw of camera 2 in degree
 camera_rots = [camera_rot_0, camera_rot_1, camera_rot_2]
 
 towns = ["town-1", "town-2", "town-3", "town-4", "town-5", "town-6", "town-7"]
+
+
+disparity_smoothness = 1e-3

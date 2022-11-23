@@ -96,7 +96,16 @@ class SegmentHead(nn.Module):
 
         return out
             
+class DisparityBlock(nn.Module): 
+    def __init__(self, in_channels, out_channels):
+        super(DisparityBlock, self).__init__()
+        self.pad = nn.ReflectionPad2d(1)
+        self.conv = nn.Conv2d(int(in_channels), int(out_channels), 3)
 
+    def forward(self, x):
+        out = self.pad(x)
+        out = self.conv(out)
+        return out
 
 class DAPPM(nn.Module): 
     """

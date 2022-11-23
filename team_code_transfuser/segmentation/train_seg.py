@@ -6,9 +6,9 @@ from torchvision import datasets
 from torchvision.transforms import ToTensor, Resize
 import tqdm
 
-from models.PIDNet.model import get_pred_model
+from models.PIDNet.model import PIDNet
 from seg_dataset import SegmentationDataset
-from utils import log_train_info, visualize_semantic_processed
+from utils import log_train_info, visualize_semantic_processed, get_smooth_loss
 import config
 
 from matplotlib import pyplot as plt
@@ -24,10 +24,18 @@ def train_seg(rgb, sem, model, optim, visualize_log):
     sem = sem.long().to(device) 
 
     pred_sem = model(rgb)
+    out_p_loss, disparity, pred_sem, out_d_loss = model(rgb)
     resize = Resize(size = (rgb.shape[2], rgb.shape[3]))
     pred_sem = resize(pred_sem)
 
     loss = F.cross_entropy(pred_sem, sem)
+    loss += out_p_loss
+    loss += out_d_loss
+    # calculate smoothness and add it to the loss
+    mean_disp = disparity.mean(2, True).mean(3, True)
+    norm_disp = disparity / (mean_disp + 1e-7)
+    smooth_loss = get_smooth_loss(norm_disp, rgb)
+    loss += config.disparity_smoothness * smooth_loss
 
     optim.zero_grad()
     loss.backward()
@@ -54,7 +62,8 @@ def train_seg(rgb, sem, model, optim, visualize_log):
 def main(args):
     torch.manual_seed(args.seed)
 
-    seg_model = get_pred_model("PIDNet-m", len(config.labels) + 1).to(device)
+    # seg_model = get_pred_model("PIDNet-m", len(config.labels) + 1).to(device)
+    seg_model = PIDNet(m=2, n=3, num_classes=len(config.labels) + 1, planes=64, ppm_planes=96, head_planes=128, augment=True)
     seg_optim = optim.Adam(seg_model.parameters(), lr=args.lr)
     
     datasets = [SegmentationDataset(hdf5_file_name=town_name) for town_name in config.towns]
