@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import time
 import logging
 
-from .model_utils import BasicBlock, Bottleneck, SegmentHead, DAPPM, PAPPM, Pag, Bag, LightBag
+from .model_utils import BasicBlock, Bottleneck, SegmentHead, DAPPM, PAPPM, Pag, Bag, LightBag, DisparityBlock
 
 bn_mom = 0.1
 algc = False
@@ -80,7 +80,8 @@ class PIDNet(nn.Module):
         # Prediction Head
         if self.augment:
             self.seghead_p = SegmentHead(planes * 2, head_planes, num_classes)
-            self.seghead_d = SegmentHead(planes * 2, planes, 1)           
+            self.seghead_d = SegmentHead(planes * 2, planes, 1)       
+            self.disp_conv = DisparityBlock(num_classes, 1)    
 
         self.final_layer = SegmentHead(planes * 4, head_planes, num_classes)
 
@@ -164,9 +165,10 @@ class PIDNet(nn.Module):
         out = self.final_layer(self.dfm(out_p, out_i, out_d))
 
         if self.augment: # in training augment will be true, in interference it will be false
+            disparity = nn.Sigmoid()(self.disp_conv(out))
             out_p_loss = self.seghead_p(temp_p)
             out_d_loss = self.seghead_d(temp_d)
-            return [out_p_loss, out, out_d_loss]
+            return [out_p_loss, disparity, out, out_d_loss]
         else: 
             return out
 

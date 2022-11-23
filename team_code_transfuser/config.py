@@ -67,7 +67,7 @@ class GlobalConfig:
 
     num_class = 8
     load_seg_model = True
-    seg_model_path = os.environ.get('WORK_DIR') + "/team_code_transfuser/segmentation/pretrained/pidnet-m-augmented-medium-dataset.th"
+    seg_model_path = os.environ.get('WORK_DIR') + "/team_code_transfuser/segmentation/pretrained/pidnet-m-big-dataset-not-augmented-parsed.th"
     classes = {
         0: [0, 0, 0],  # unlabeled
         1: [0, 0, 255],  # vehicle

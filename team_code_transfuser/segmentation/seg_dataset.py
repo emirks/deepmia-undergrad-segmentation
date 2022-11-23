@@ -36,6 +36,7 @@ def filter_sem(sem, labels=config.labels):
 class SegmentationDataset(Dataset): 
     def __init__(self, hdf5_file_name, dataset_mode="train"):
         super(SegmentationDataset, self).__init__()
+        self.size = 0
         self.path = "/home/transfuser/autonomous_car/transfuser-erkam/semantic-segmentation-dataset"
 
         self.rgb_datas = []
@@ -50,13 +51,13 @@ class SegmentationDataset(Dataset):
             for time in file_timestamps:
                 rgb = []
                 semantic = []
-                for camera_id in range(len(config.camera_rots)):
+                for camera_id in [1, 0, 2]:
                     rgb_cam_name = f"rgb_{camera_id}"
                     semantic_cam_name = f"semantic_{camera_id}"
                     rgb_pos = np.array(file[rgb_cam_name][str(time)])
-                    rgb_pos = rgb_pos[config.img_width:config.img_width*2, config.img_height:config.img_height*2]
+                    rgb_pos = rgb_pos[config.img_height:config.img_height*2, config.img_width:config.img_width*2]
                     semantic_pos = np.array(file[semantic_cam_name][str(time)])
-                    semantic_pos = semantic_pos[config.img_width:config.img_width*2, config.img_height:config.img_height*2]
+                    semantic_pos = semantic_pos[config.img_height:config.img_height*2, config.img_width:config.img_width*2]
                     rgb.append(rgb_pos)
                     semantic.append(semantic_pos)
                 rgb = np.concatenate(rgb, axis=1)
@@ -84,7 +85,7 @@ class SegmentationDataset(Dataset):
         
         rgb_image = self.rgb_datas[index]
         sem_image = self.semantic_datas[index]
-        rgb_image = self.augmenter(images=rgb_image[...,::-1][None])[0]
+        #rgb_image = self.augmenter(images=rgb_image[...,::-1][None])[0]
 
         sem_image = filter_sem(sem_image)
 

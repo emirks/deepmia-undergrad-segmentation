@@ -727,22 +727,20 @@ class LidarCenterNet(nn.Module):
         if debug and self.i % 2 == 0 and not (save_path is None):
             pred_bev = self.pred_bev(features[0])
             pred_bev = F.interpolate(pred_bev, (self.config.bev_resolution_height, self.config.bev_resolution_width), mode='bilinear', align_corners=True)
-            # pred_semantic = self.seg_decoder(image_features_grid)
-            # pred_semantics = []
-            # rgb_numpy = rgb.clone().detach().cpu().numpy()
-            # resize = lambda input, y, x : transforms.Resize(size = (y, x))(input)
-            # for i in range(3): 
-            #     semantic_input = rgb_numpy[:, :, :, i*224:(i + 1)*224]
-            #     semantic_input = collate.default_collate(semantic_input).float().to(self.device) 
-            #     pred_semantic = self.seg_model(semantic_input)[0]
-            #     pred_semantics.append(resize(pred_semantic, semantic_input.shape[2], semantic_input.shape[3]))
-            # pred_semantic = torch.cat(pred_semantics, dim=2)
-            # print(pred_semantic.shape)
-            # pred_semantic = resize(pred_semantic, rgb_numpy.shape[2], rgb_numpy.shape[3])
-            semantic_input = collate.default_collate(rgb.cpu().detach().numpy()).float().to(self.device)
-            pred_semantic = self.seg_model(semantic_input)[0]
-            resize = transforms.Resize(size = (semantic_input.shape[2], semantic_input.shape[3]))
-            pred_semantic = resize(pred_semantic)
+
+            rgbs = torch.tensor_split(rgb, 2, dim=3)
+            pred_sems = []
+            for i in range(len(rgbs)):
+                rgb_i = rgbs[i]
+                pred_sem = self.seg_model(rgb_i)[0]
+                resize = transforms.Resize(size = (rgb_i.shape[2], rgb_i.shape[3]))
+                pred_sems.append(resize(pred_sem))
+            pred_semantic = torch.cat(pred_sems, dim=2)
+
+            # semantic_input = rgb
+            # pred_semantic = self.seg_model(semantic_input)[0]
+            # resize = transforms.Resize(size = (semantic_input.shape[2], semantic_input.shape[3]))
+            # pred_semantic = resize(pred_semantic)
             pred_depth = self.depth_decoder(image_features_grid)
 
             self.visualize_model_io(save_path, self.i, self.config, rgb, lidar_bev, target_point,

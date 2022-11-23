@@ -1,5 +1,5 @@
-# labels=[1,4,6,7,8,10,18]
-labels=[*range(20)]
+labels=[1,4,6,7,8,10,18]
+#labels=[*range(20)]
 
 SEM_COLORS = {
     0 : (0, 0, 0),
@@ -39,6 +39,9 @@ camera_fov = 120 #Camera FOV in degree
 camera_rot_0 = [0.0, 0.0, 0.0] # Roll Pitch Yaw of camera 0 in degree
 camera_rot_1 = [0.0, 0.0, -60.0] # Roll Pitch Yaw of camera 1 in degree
 camera_rot_2 = [0.0, 0.0, 60.0] # Roll Pitch Yaw of camera 2 in degree
-camera_rots = [camera_rot_0, camera_rot_1, camera_rot_2]
+camera_rots = [camera_rot_1, camera_rot_0, camera_rot_2]
 
 towns = ["town-1", "town-2", "town-3", "town-4", "town-5", "town-6", "town-7"]
+
+
+disparity_smoothness = 1e-3
