@@ -23,19 +23,31 @@ def train_seg(rgb, sem, model, optim, visualize_log):
     rgb = rgb.float().permute(0,3,1,2).to(device) 
     sem = sem.long().to(device) 
 
-    pred_sem = model(rgb)
-    out_p_loss, disparity, pred_sem, out_d_loss = model(rgb)
-    resize = Resize(size = (rgb.shape[2], rgb.shape[3]))
-    pred_sem = resize(pred_sem)
+    rgbs = torch.tensor_split(rgb, 2, dim=3)
+    sems = torch.tensor_split(sem, 2, dim=2)
+    pred_sems = []
+    losses = []
+    for i in range(len(rgbs)):
+        rgb, sem = rgbs[i], sems[i] 
+        out_p_loss, disparity, pred_sem, out_d_loss = model(rgb)
+        resize = Resize(size = (rgb.shape[2], rgb.shape[3]))
+        pred_sem = resize(pred_sem)
+        loss = F.cross_entropy(pred_sem, sem)
+        loss += out_p_loss
+        loss += out_d_loss
+        # calculate smoothness and add it to the loss
+        mean_disp = disparity.mean(2, True).mean(3, True)
+        norm_disp = disparity / (mean_disp + 1e-7)
+        smooth_loss = get_smooth_loss(norm_disp, rgb)
+        loss += config.disparity_smoothness * smooth_loss
 
-    loss = F.cross_entropy(pred_sem, sem)
-    loss += out_p_loss
-    loss += out_d_loss
-    # calculate smoothness and add it to the loss
-    mean_disp = disparity.mean(2, True).mean(3, True)
-    norm_disp = disparity / (mean_disp + 1e-7)
-    smooth_loss = get_smooth_loss(norm_disp, rgb)
-    loss += config.disparity_smoothness * smooth_loss
+        losses.append(loss)
+        pred_sems.append(pred_sem)
+    rgb = torch.cat(rgbs, dim=3)
+    sem = torch.cat(sems, dim=2)
+    pred_sem = torch.cat(pred_sems, dim=3) 
+
+    loss = sum(losses)
 
     optim.zero_grad()
     loss.backward()

@@ -39,39 +39,15 @@ class SegmentationDataset(Dataset):
         self.size = 0
         self.path = "/home/transfuser/autonomous_car/transfuser-erkam/semantic-segmentation-dataset"
 
-        self.rgb_datas = []
-        self.semantic_datas = []
-        hdf5_file = f"{self.path}/{hdf5_file_name}.hdf5"
-        with h5py.File(hdf5_file, 'r') as file:
-            if dataset_mode == "test": 
-                # If dataset is for testing, then only take 50 images. 
-                file_timestamps = file['timestamps']['timestamps'][:50]
-            else: 
-                file_timestamps = file['timestamps']['timestamps']
-            for time in file_timestamps:
-                rgb = []
-                semantic = []
-                for camera_id in [1, 0, 2]:
-                    rgb_cam_name = f"rgb_{camera_id}"
-                    semantic_cam_name = f"semantic_{camera_id}"
-                    rgb_pos = np.array(file[rgb_cam_name][str(time)])
-                    rgb_pos = rgb_pos[config.img_height:config.img_height*2, config.img_width:config.img_width*2]
-                    semantic_pos = np.array(file[semantic_cam_name][str(time)])
-                    semantic_pos = semantic_pos[config.img_height:config.img_height*2, config.img_width:config.img_width*2]
-                    rgb.append(rgb_pos)
-                    semantic.append(semantic_pos)
-                rgb = np.concatenate(rgb, axis=1)
-                semantic = np.concatenate(semantic, axis=1)
-                height, width = rgb.shape[:2]
-                rgb = rgb[height//2 - config.img_resolution[0]//2:height//2 + config.img_resolution[0]//2, 
-                    width//2 - config.img_resolution[1]//2:width//2 + config.img_resolution[1]//2]
-                semantic = semantic[height//2 - config.img_resolution[0]//2:height//2 + config.img_resolution[0]//2, 
-                    width//2 - config.img_resolution[1]//2:width//2 + config.img_resolution[1]//2]
-                self.rgb_datas.append(rgb)
-                self.semantic_datas.append(semantic)
+        hdf5_file_path = f"{self.path}/{hdf5_file_name}.hdf5"
+        self.hdf5_file = h5py.File(hdf5_file_path, 'r')
+        if dataset_mode == "test": 
+            # If dataset is for testing, then only take 50 images. 
+            self.file_timestamps = self.hdf5_file['timestamps']['timestamps'][:50]
+        else: 
+            self.file_timestamps = self.hdf5_file['timestamps']['timestamps']
 
-        assert(len(self.rgb_datas) == len(self.semantic_datas))
-        self.size = len(self.rgb_datas)
+        self.size = len(self.file_timestamps)
 
         self.augmenter = augment(0.2)
 
@@ -83,13 +59,31 @@ class SegmentationDataset(Dataset):
         if index > self.size: 
             raise Exception("Index of the required dataset element is higher than size of the dataset")
         
-        rgb_image = self.rgb_datas[index]
-        sem_image = self.semantic_datas[index]
+        time = self.file_timestamps[index]
+        rgb = []
+        semantic = []
+        for camera_id in range(len(config.camera_rots)):
+            rgb_cam_name = f"rgb_{camera_id}"
+            semantic_cam_name = f"semantic_{camera_id}"
+            rgb_pos = np.array(self.hdf5_file[rgb_cam_name][str(time)])
+            rgb_pos = rgb_pos[config.img_width:config.img_width*2, config.img_height:config.img_height*2]
+            semantic_pos = np.array(self.hdf5_file[semantic_cam_name][str(time)])
+            semantic_pos = semantic_pos[config.img_width:config.img_width*2, config.img_height:config.img_height*2]
+            rgb.append(rgb_pos)
+            semantic.append(semantic_pos)
+        rgb = np.concatenate(rgb, axis=1)
+        semantic = np.concatenate(semantic, axis=1)
+        height, width = rgb.shape[:2]
+        rgb = rgb[height//2 - config.img_resolution[0]//2:height//2 + config.img_resolution[0]//2, 
+            width//2 - config.img_resolution[1]//2:width//2 + config.img_resolution[1]//2]
+        semantic = semantic[height//2 - config.img_resolution[0]//2:height//2 + config.img_resolution[0]//2, 
+            width//2 - config.img_resolution[1]//2:width//2 + config.img_resolution[1]//2]
+
         #rgb_image = self.augmenter(images=rgb_image[...,::-1][None])[0]
 
-        sem_image = filter_sem(sem_image)
+        semantic = filter_sem(semantic)
 
-        return rgb_image, sem_image
+        return rgb, semantic
 
 if __name__ == '__main__':
     dataset = SegmentationDataset("town-1")
