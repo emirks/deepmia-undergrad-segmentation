@@ -80,8 +80,8 @@ class PIDNet(nn.Module):
         # Prediction Head
         if self.augment:
             self.seghead_p = SegmentHead(planes * 2, head_planes, num_classes)
-            self.seghead_d = SegmentHead(planes * 2, planes, 1)       
-            self.disp_conv = DisparityBlock(num_classes, 1)    
+            self.seghead_d = SegmentHead(planes * 2, planes, 1)           
+            self.disp_conv = DisparityBlock(num_classes, 1)
 
         self.final_layer = SegmentHead(planes * 4, head_planes, num_classes)
 
