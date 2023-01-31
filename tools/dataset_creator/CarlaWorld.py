@@ -30,7 +30,7 @@ class CarlaWorld:
         self.sensor_list = []
 
         self.simulation_new_started = True
-        self.frame_interval = 10    
+        self.frame_interval = 2
 
     def set_weather(self, weather_option): 
         weather = carla.WeatherParameters(*weather_option)
@@ -89,9 +89,11 @@ class CarlaWorld:
                 timestamp = round(time.time() * 1000.0)
                 for i in range(len(self.sensor_list)):
                     sensor = self.sensor_list[i]
-                    processed_sensor_data = sensor.process_data(sensor_datas[i]) 
-                    self.hdf5_file.record_data(sensor.sensor_id, processed_sensor_data, timestamp)
-                
+                    sensor_datas[i] = sensor.process_data(sensor_datas[i])
+                    sensor_transform = sensor.get_transform()
+                    self.hdf5_file.record_data(sensor.sensor_id, sensor_datas[i], timestamp)
+                    self.hdf5_file.record_data(sensor.sensor_id + "-transform", sensor_transform, timestamp)
+
                 current_ego_recorded_frames += 1
                 self.total_recorded_frames += 1
                 timestamps.append(timestamp)

@@ -65,9 +65,9 @@ class GlobalConfig:
     #Waypoint GRU
     gru_hidden_size = 64
 
-    num_class = 8
+    num_class = 7
     load_seg_model = True
-    seg_model_path = os.environ.get('WORK_DIR') + "/team_code_transfuser/segmentation/pretrained/pidnet-m-big-dataset-not-augmented-parsed.th"
+    seg_model_path = os.environ.get('WORK_DIR') + "/team_code_transfuser/segmentation/pretrained/pidnet-m-big-dataset-3-camera-seperated-smooth-edge-loss-added-class-weight-added-2.th"
     classes = {
         0: [0, 0, 0],  # unlabeled
         1: [0, 0, 255],  # vehicle

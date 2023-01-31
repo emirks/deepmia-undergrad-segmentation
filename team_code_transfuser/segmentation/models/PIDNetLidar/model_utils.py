@@ -1,4 +1,6 @@
 # Written by Jiacong Xu (jiacong.xu@tamu.edu)
+import math
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,8 +11,14 @@ upsample = lambda x, size : F.interpolate(x, size, mode="bilinear", align_corner
 batch_norm = nn.BatchNorm2d
 
 class BasicBlock(nn.Module): 
+    """
+        args : inplanes, outplanes
+
+        forward shape transformation: 
+            (B, inplanes, H, W)  --->  (B, outplanes, H, W)
+    """
     expansion = 1 # No expansion
-    def __init__(self, inplanes, outplanes, stride=1, downsample=None, apply_relu=False) -> None:
+    def __init__(self, inplanes, outplanes, stride=1, apply_relu=True) -> None:
         super(BasicBlock, self).__init__()
         self.conv1 = nn.Conv2d(inplanes, outplanes, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn1 = batch_norm(outplanes, momentum=bn_mom)
@@ -19,7 +27,12 @@ class BasicBlock(nn.Module):
         self.conv2 = nn.Conv2d(outplanes, outplanes, kernel_size=3, padding=1, bias=False)
         self.bn2 = batch_norm(outplanes, momentum=bn_mom)
 
-        self.downsample = downsample
+        self.downsample = None
+        if stride != 1 or inplanes != outplanes * self.expansion: 
+            self.downsample = nn.Sequential(
+                nn.Conv2d(inplanes, outplanes * self.expansion, kernel_size=1, stride=stride, bias=False), 
+                batch_norm(outplanes * self.expansion, momentum=bn_mom)
+            )
         self.apply_relu = apply_relu
     
     def forward(self, x): 
@@ -40,9 +53,15 @@ class BasicBlock(nn.Module):
 
 
 class Bottleneck(nn.Module): 
+    """
+        args: inplanes, outplanes
+
+        forward shape transformation: 
+            (B, inplanes, H, W) --> (B, outplanes * expansion, H, W)
+    """
     expansion = 2
 
-    def __init__(self, inplanes, outplanes, stride=1, downsample=None, apply_relu=False) -> None:
+    def __init__(self, inplanes, outplanes, stride=1, apply_relu=False) -> None:
         super(Bottleneck, self).__init__()
         self.conv1 = nn.Conv2d(inplanes, outplanes, kernel_size=1, bias=False)
         self.bn1 = batch_norm(outplanes, momentum=bn_mom)
@@ -52,7 +71,13 @@ class Bottleneck(nn.Module):
         self.bn3 = batch_norm(outplanes * self.expansion, momentum=bn_mom)
         self.relu = nn.ReLU(inplace=True)
 
-        self.downsample = downsample
+        self.downsample = None
+        if stride != 1 or inplanes != outplanes * self.expansion: 
+            self.downsample = nn.Sequential(
+                nn.Conv2d(inplanes, outplanes * self.expansion, kernel_size=1, stride=stride, bias=False), 
+                batch_norm(outplanes * self.expansion, momentum=bn_mom)
+            )
+
         self.apply_relu = apply_relu
     
     def forward(self, x): 
@@ -75,6 +100,12 @@ class Bottleneck(nn.Module):
 
 
 class SegmentHead(nn.Module): 
+    """
+        args: inplanes, interplanes, outplanes
+
+        forward shape transformation: 
+            (B, inplanes, H, W) --> (B, outplanes, H, W)
+    """
     def __init__(self, inplanes, interplanes, outplanes, scale_factor=None):
         super(SegmentHead, self).__init__()
         self.relu = nn.ReLU(inplace=True)
@@ -95,32 +126,25 @@ class SegmentHead(nn.Module):
             out = upsample(out, [height, width])
 
         return out
-            
-class DisparityBlock(nn.Module): 
-    def __init__(self, in_channels, out_channels):
-        super(DisparityBlock, self).__init__()
-        self.pad = nn.ReflectionPad2d(1)
-        self.conv = nn.Conv2d(int(in_channels), int(out_channels), 3)
 
-    def forward(self, x):
-        out = self.pad(x)
-        out = self.conv(out)
-        return out
 
 class DAPPM(nn.Module): 
     """
+        args: inplanes, branch_planes, outplanes
 
-    """
-    def scale(self, kernel_size, stride, padding):
+        forward shape transformation: 
+            (B, inplanes, H, W) --> (B, outplanes, H, W) 
+    """    
+    def scale(self, kernel_size, stride=1, padding=1):
         if kernel_size == -1: 
             avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         else: 
-            avg_pool = nn.AvgPool2d(kernel_size=kernel_size, stride=stride, padding=padding), 
+            avg_pool = nn.AvgPool2d(kernel_size=kernel_size, stride=stride, padding=padding) 
         return nn.Sequential(
             avg_pool,
             batch_norm(self.inplanes, momentum=bn_mom),
             nn.ReLU(inplace=True),
-            nn.Conv2d(self.inplanes, self.branch_planes, kernel_size=1, bias=False),
+            nn.Conv2d(self.inplanes, self.branch_planes, kernel_size=1, bias=False)
         )
     
     def process(self): 
@@ -176,11 +200,17 @@ class DAPPM(nn.Module):
         x_list.append(self.process4(
             upsample(self.scale4(x), [height, width]) + x_list[3]))
         
-        out = self.compression(torch.cat(x_list, dim=1) + self.shortcut(x))
+        out = self.compression(torch.cat(x_list, dim=1)) + self.shortcut(x)
         return out
         
 
 class PAPPM(nn.Module): 
+    """
+        args: inplanes, branch_planes, outplanes
+
+        forward shape transformation: 
+            (B, inplanes, H, W) --> (B, outplanes, H, W) 
+    """
     def scale(self, kernel_size, stride=1, padding=1):
         if kernel_size == -1: 
             avg_pool = nn.AdaptiveAvgPool2d((1, 1))
@@ -242,8 +272,13 @@ class PAPPM(nn.Module):
         out = self.compression(torch.cat([x0, scale_out], dim=1)) + self.shortcut(x)
         return out
 
-
 class Pag(nn.Module): 
+    """
+        args: in_channels, mid_channels
+
+        forward shape transformation: 
+            (B, in_channels, H1, W1), (B, in_channels, H2, W2) --> (B, in_channels, H1, W1)
+    """
     def __init__(self, in_channels, mid_channels, apply_relu_first=False, with_channel=False) -> None:
         super(Pag, self).__init__()
 
@@ -285,6 +320,150 @@ class Pag(nn.Module):
             similarity_map = torch.sigmoid(torch.sum(p_q * i_q_upsampled, dim=1).unsqueeze(1))
         out = similarity_map * i_upsampled + (1 - similarity_map) * p
         return out
+
+class MultiHeadAttention(nn.Module): 
+    """
+        args: dim, num_heads, attn_pdrop, resid_pdrop
+
+        forward shape transformation: 
+            (B, T, C), (B, T, C), (B, T, C) --> (B, T, C)
+    """
+    def __init__(self, dim, num_heads, attn_pdrop, resid_pdrop) -> None:
+        super().__init__()
+        assert dim % num_heads == 0
+
+        self.n_head = num_heads
+        self.key = nn.Linear(dim, dim)
+        self.query = nn.Linear(dim, dim)
+        self.value = nn.Linear(dim, dim)
+
+        self.attn_drop = nn.Dropout(attn_pdrop)
+        self.resid_drop = nn.Dropout(resid_pdrop)
+
+        self.proj = nn.Linear(dim, dim)
+    
+    def _reshape_to_batches(self, x): 
+        batch_size, seq_len, in_feature = x.size()
+        sub_dim = in_feature // self.n_head
+        return x.view(batch_size, seq_len, self.n_head, sub_dim).transpose(1, 2)
+    
+    def _reshape_from_batches(self, x): 
+        batch_size, n_head, seq_len, in_feature = x.size()
+        assert n_head == self.n_head
+        out_dim = in_feature * self.n_head
+        return x.transpose(1, 2).contiguous().view(batch_size, seq_len, out_dim)
+        
+    def forward(self, k, q, v): 
+        assert k.size() == q.size() == v.size()
+        k = self._reshape_to_batches(self.key(k)) 
+        q = self._reshape_to_batches(self.query(q))
+        v = self._reshape_to_batches(self.value(v))
+
+        # self-attend: (B, nh, seq_len, sub_dim) x (B, nh, sub_dim, seq_len) -> (B, nh, seq_len, seq_len)
+        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+        att = F.softmax(att, dim=-1)
+        att = self.attn_drop(att)
+        y = att @ v # (B, nh, seq_len, seq_len) x (B, nh, seq_len, sub_dim) -> (B, nh, seq_len, sub_dim)
+        y = self._reshape_from_batches(y) # re-assemble all head outputs side by side
+
+        # output projection
+        y = self.resid_drop(self.proj(y))
+        return y
+
+
+class FusedToLidarAttention(nn.Module): 
+    """
+        args: n_channels, n_head, attn_pdrop, resid_pdrop 
+
+        forward shape transformation: 
+            (B, C, H1, W1), (B, C, H2, W2) --> (B, C, H1, W1)
+    """
+    def __init__(self, n_channels, n_head, attn_pdrop, resid_pdrop, 
+                apply_relu_first=False) -> None:
+        super(FusedToLidarAttention, self).__init__()
+
+        self.apply_relu_first = apply_relu_first
+        self.f_fused_data = nn.Sequential(
+            nn.Conv2d(n_channels, n_channels, kernel_size=1, bias=False),
+            batch_norm(n_channels)
+        )
+        self.f_lidar_data = nn.Sequential(
+            nn.Conv2d(n_channels, n_channels, kernel_size=1, bias=False), 
+            batch_norm(n_channels)
+        )
+        if apply_relu_first: 
+            self.relu = nn.ReLU(inplace=True)
+        
+        self.n_channels = n_channels
+        self.multihead_att = MultiHeadAttention(n_channels, n_head, attn_pdrop, resid_pdrop)
+        self.att_ln = nn.LayerNorm(n_channels)
+
+    def forward(self, lidar_data, fused_data): 
+        lidar_h, lidar_w = lidar_data.shape[2:4]
+        # fused_h, fused_w = fused_data.shape[2:4]
+        if self.apply_relu_first:
+            lidar_data = self.relu(lidar_data) 
+            fused_data = self.relu(fused_data)
+
+        fused_data = self.f_fused_data(fused_data)
+        fused_data = upsample(fused_data, [lidar_h, lidar_w])
+        lidar_data = self.f_lidar_data(lidar_data)
+
+        batch = fused_data.shape[0]
+        fused_data = fused_data.view(batch, -1, lidar_h, lidar_w).permute(0,2,3,1).contiguous().view(batch, -1, self.n_channels)
+        lidar_data = lidar_data.view(batch, -1, lidar_h, lidar_w).permute(0,2,3,1).contiguous().view(batch, -1, self.n_channels)
+
+        out = self.att_ln(self.multihead_att(lidar_data, fused_data, lidar_data))
+
+        out = out.view(batch, lidar_h*lidar_w, self.n_channels).contiguous().view(batch, self.n_channels, lidar_h, lidar_w)
+        return out
+
+class FusedToCameraAttention(nn.Module): 
+    """
+        args: n_channels, n_head, attn_pdrop, resid_pdrop 
+
+        forward shape transformation: 
+            (B, C, H1, W1), (B, C, H2, W2) --> (B, C, H1, W1)
+    """
+    def __init__(self, n_channels, n_head, attn_pdrop, resid_pdrop, 
+                apply_relu_first=False) -> None:
+        super(FusedToCameraAttention, self).__init__()
+
+        self.apply_relu_first = apply_relu_first
+        self.f_fused_data = nn.Sequential(
+            nn.Conv2d(n_channels, n_channels, kernel_size=1, bias=False),
+            batch_norm(n_channels)
+        )
+        self.f_camera_data = nn.Sequential(
+            nn.Conv2d(n_channels, n_channels, kernel_size=1, bias=False), 
+            batch_norm(n_channels)
+        )
+        if apply_relu_first: 
+            self.relu = nn.ReLU(inplace=True)
+
+        self.n_channels = n_channels
+        self.multihead_att = MultiHeadAttention(n_channels, n_head, attn_pdrop, resid_pdrop)
+        self.att_ln = nn.LayerNorm(n_channels)
+
+    def forward(self, camera_data, fused_data): 
+        camera_h, camera_w = camera_data.shape[2:4]
+        if self.apply_relu_first:
+            camera_data = self.relu(camera_data) 
+            fused_data = self.relu(fused_data)
+
+        fused_data = self.f_fused_data(fused_data)
+        fused_data = upsample(fused_data, [camera_h, camera_w])
+        camera_data = self.f_camera_data(camera_data)
+
+        batch = fused_data.shape[0]
+        fused_data = fused_data.view(batch, -1, camera_h, camera_w).permute(0,2,3,1).contiguous().view(batch, -1, self.n_channels)
+        camera_data = camera_data.view(batch, -1, camera_h, camera_w).permute(0,2,3,1).contiguous().view(batch, -1, self.n_channels)
+
+        out = self.att_ln(self.multihead_att(camera_data, fused_data, camera_data))
+
+        out = out.view(batch, camera_h*camera_w, self.n_channels).contiguous().view(batch, self.n_channels, camera_h, camera_w)
+        return out
+
 
 
 class Bag(nn.Module): 
@@ -335,3 +514,44 @@ class LightBag(nn.Module):
         out = p_add + i_add
         return out
 
+
+
+if __name__ == '__main__':
+    # test models
+    B, C, H1, W1, H2, W2 = 5, 8, 10, 15, 20, 24
+    H, W = 480, 640
+    n_embd = 16
+    block_exp = 4
+    n_head = 4
+    resid_pdrop = 0.1
+    attn_pdrop = 0.1
+
+
+    x = torch.randn(B, C, H1, W1)
+    y = torch.randn(B, C, H2, W2)
+    z = torch.randn(B, 3, H, W)
+
+    pag = Pag(C, 2*C)
+    att1 = FusedToLidarAttention(C, n_head, attn_pdrop, resid_pdrop)
+    att2 = FusedToCameraAttention(C, n_head, attn_pdrop, resid_pdrop)
+    dappm = DAPPM(C, 96, 4)
+
+    basic_block = BasicBlock(C, 2*C)
+    bottleneck = Bottleneck(C, 2*C)
+
+    initial_layer = nn.Sequential(
+        nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=2, padding=1),
+        batch_norm(64, momentum=bn_mom), 
+        nn.ReLU(inplace=True),
+        nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+        batch_norm(64, momentum=bn_mom), 
+        nn.ReLU(inplace=True)
+    )
+
+    print(z.shape)
+    z = initial_layer(z) 
+    print(z.shape)
+
+    # x = att2(x, y)
+    # x = dappm(x)
+    # print(x.shape)

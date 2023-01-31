@@ -91,3 +91,19 @@ class SemanticSegmentationEncoder(nn.Module):
             output = self.output_conv(output)
         
         return output
+
+if __name__ == '__main__':
+    device = torch.device('cuda')
+    B, C, H, W = 5, 3, 480, 640
+    downsampler = DownsamplerBlock(C, 16)
+    non_bottleneck = non_bottleneck_1d(16, 0.1, 2)
+    downsampler2 = DownsamplerBlock(16, 64)
+    downsampler3 = DownsamplerBlock(64, 128)
+
+    x = torch.randn(B, C, H, W)
+    x = downsampler(x) 
+    print(x.shape)
+    x = downsampler2(x)
+    print(x.shape)
+    x = downsampler3(x) 
+    print(x.shape)

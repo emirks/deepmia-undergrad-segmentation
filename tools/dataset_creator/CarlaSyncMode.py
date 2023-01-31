@@ -28,7 +28,8 @@ class CarlaSyncMode(object):
         self.world = world
         self.sensors = sensors
         self.frame = None
-        self.delta_seconds = 1.0 / kwargs.get('fps', 20)
+        # self.delta_seconds = 1.0 / kwargs.get('fps', 20)
+        self.delta_seconds = 1.0
         self._queues = []
         self._settings = None
 

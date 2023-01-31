@@ -50,8 +50,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Settings for the data capture", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('hdf5_file', default=None, type=str, help='name of hdf5 file to save the data')
     parser.add_argument('--town-index', default=0, type=int, help='index of the town to create dataset on')
-    #parser.add_argument('-wi', '--width', default=1024, type=int, help="sensor widths in pixels")
-    #parser.add_argument('-he', '--height', default=768, type=int, help="sensor heights in pixels")
+    # total number of frames that will be generated from the script: 
+    #   number_of_egos * frames_per_ego * 5
+    parser.add_argument('-egos', '--number-of-egos', default=13, type=int, help="number of egos to run in the simulation")
+    parser.add_argument('-fpe', '--frames-per-ego', default=15, type=int, help="number of egos to run in the simulation")
     parser.add_argument('-ve', '--vehicles', default=100, type=int, help="number of vehicles to spawn in the simulation")
     parser.add_argument('-wa', '--walkers', default=150, type=int, help="number of walkers to spawn in the simulation")
     parser.add_argument('-v', '--video', action="store_true", help="record a mp4 video on top of the recorded hdf5 file")
@@ -88,6 +90,24 @@ if __name__ == "__main__":
         }
         sensor_attrs.append(rgb_camera)
         sensor_attrs.append(semantic_camera)
+    lidar_transform = carla.Transform(
+        carla.Location(x=config.lidar_pos[0], y = config.lidar_pos[1], z=config.lidar_pos[2]),
+        carla.Rotation(roll=config.lidar_rot[0], pitch=config.lidar_rot[1], yaw=config.lidar_rot[2])
+    )
+    lidar = {
+        'id': 'lidar',
+        'name': 'sensor.lidar.ray_cast',
+        "carla_attr" : {
+            'channels': str(config.lidar_channels), 
+            'range': str(config.lidar_range), 
+            'points_per_second': str(config.lidar_points_per_second),
+            'lower_fov': str(config.lidar_lower_fov), 
+            'upper_fov': str(config.lidar_upper_fov)
+        },
+        'attach_transform' : lidar_transform
+    }
+    sensor_attrs.append(lidar)
+
 
     # Beginning data capture proccedure
     save_path = "/home/transfuser/autonomous_car/transfuser-erkam/semantic-segmentation-dataset"
@@ -95,7 +115,7 @@ if __name__ == "__main__":
     print("HDF5 File opened")
 
     timestamps = []
-    egos_to_run = 13
+    egos_to_run = args.number_of_egos
     print('Starting to record data...')
     town_options = carla.Client('localhost', 2000).get_available_maps()
     carla_world = CarlaWorld(town_options[args.town_index], HDF5_file)
@@ -104,7 +124,7 @@ if __name__ == "__main__":
         carla_world.set_weather(weather_option)
         ego_vehicle_iteration = 0
         while ego_vehicle_iteration < egos_to_run:
-            carla_world.begin_data_acquisition(sensor_attrs=sensor_attrs, frames_to_record_one_ego=15, 
+            carla_world.begin_data_acquisition(sensor_attrs=sensor_attrs, frames_to_record_one_ego=args.frames_per_ego, 
                                                 timestamps=timestamps, egos_to_run=egos_to_run)
             print('Setting another vehicle as EGO.')
             ego_vehicle_iteration += 1

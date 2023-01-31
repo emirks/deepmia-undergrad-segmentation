@@ -11,6 +11,7 @@ class HDF5Saver:
         if groups != None: 
             for group in groups: 
                 self.groups[group["id"]] = self.file.create_group(group["id"])
+                self.groups[group["id"] + "-transform"] = self.file.create_group(group["id"] + "-transform")
         else: 
             self.groups["rgb"] = self.file.create_group("rgb")
             self.groups["depth"] = self.file.create_group("depth")

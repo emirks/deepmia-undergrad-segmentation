@@ -81,7 +81,7 @@ class PIDNet(nn.Module):
         if self.augment:
             self.seghead_p = SegmentHead(planes * 2, head_planes, num_classes)
             self.seghead_d = SegmentHead(planes * 2, planes, 1)           
-            self.disp_conv = DisparityBlock(num_classes, 1)
+            # self.disp_conv = DisparityBlock(num_classes, 1)
 
         self.final_layer = SegmentHead(planes * 4, head_planes, num_classes)
 
@@ -165,12 +165,65 @@ class PIDNet(nn.Module):
         out = self.final_layer(self.dfm(out_p, out_i, out_d))
 
         if self.augment: # in training augment will be true, in interference it will be false
-            disparity = nn.Sigmoid()(self.disp_conv(out))
             out_p_loss = self.seghead_p(temp_p)
             out_d_loss = self.seghead_d(temp_d)
-            return [out_p_loss, disparity, out, out_d_loss]
+            return [out_p_loss, out, out_d_loss]
         else: 
             return out
+    
+    def pass_from_model(self, rgb, sem, edge, config_file):
+        if config_file.split_cameras: 
+            camera_count = len(config_file.camera_rots)
+            rgbs = torch.tensor_split(rgb, camera_count, dim=3)
+            sems = torch.tensor_split(sem, camera_count, dim=2)
+            edges = torch.tensor_split(edge, camera_count, dim=2)
+            pred_sems = []
+            losses = []
+            for i in range(camera_count):
+                rgb_i, sem_i, edge_i = rgbs[i], sems[i], edges[i] 
+                out_p_loss, pred_sem, out_d_loss = model(rgb_i)
+                resize = Resize(size = (rgb_i.shape[2], rgb_i.shape[3]))
+                pred_sem = resize(pred_sem)
+                out_p_loss = resize(out_p_loss)
+                out_d_loss = resize(out_d_loss)
+
+                loss_s = config_file.sem_loss(pred_sem, sem_i)
+                loss_b = config_file.bd_loss()(out_d_loss, edge_i)
+                loss = loss_s + loss_b
+                
+                # calculate smoothness and add it to the loss
+                disparity = nn.Sigmoid()(pred_sem)
+                mean_disp = disparity.mean(2, True).mean(3, True)
+                norm_disp = disparity / (mean_disp + 1e-7)
+                smooth_loss = get_smooth_loss(norm_disp, rgb_i)
+                loss += config.disparity_smoothness * smooth_loss     
+                loss = torch.unsqueeze(loss,0).mean()   
+                
+                losses.append(loss)
+                pred_sems.append(pred_sem)
+            pred_sem = torch.cat(pred_sems, dim=3) 
+            loss = sum(losses)
+        else: 
+            out_p_loss, pred_sem, out_d_loss = model(rgb)
+            resize = Resize(size = (rgb.shape[2], rgb.shape[3]))
+            pred_sem = resize(pred_sem)
+            out_p_loss = resize(out_p_loss)
+            out_d_loss = resize(out_d_loss)
+            disparity = nn.Sigmoid()(pred_sem)
+
+            loss_s = sem_loss(pred_sem, sem)
+            loss_b = BondaryLoss()(out_d_loss, edge)
+
+            loss = loss_s + loss_b
+            # calculate smoothness and add it to the loss
+            mean_disp = disparity.mean(2, True).mean(3, True)
+            norm_disp = disparity / (mean_disp + 1e-7)
+            smooth_loss = get_smooth_loss(norm_disp, rgb)
+            loss += config.disparity_smoothness * smooth_loss
+            loss = torch.unsqueeze(loss,0).mean()
+
+        return pred_sem, loss        
+
 
 def get_seg_model(cfg, imgnet_pretrained):
     if 's' in cfg.MODEL.NAME:

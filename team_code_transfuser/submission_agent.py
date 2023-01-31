@@ -297,7 +297,7 @@ class HybridAgent(autonomous_agent.AutonomousAgent):
                 if (self.backbone == 'transFuser'):
                     pred_wp, _ = self.nets[i].forward_ego(image, lidar_bev, target_point, target_point_image, velocity,
                                                           num_points=num_points, save_path=SAVE_PATH, stuck_detector=self.stuck_detector,
-                                                          forced_move=is_stuck, debug=self.config.debug, rgb_back=self.rgb_back)
+                                                          forced_move=is_stuck, debug=self.config.debug, rgb_back=self.rgb_back, rgb_uncropped=tick_data['rgb'])
                 elif (self.backbone == 'late_fusion'):
                     pred_wp, _ = self.nets[i].forward_ego(image, lidar_bev, target_point, target_point_image, velocity, num_points=num_points)
                 elif (self.backbone == 'geometric_fusion'):

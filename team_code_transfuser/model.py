@@ -10,6 +10,8 @@ from latentTF import latentTFBackbone
 from point_pillar import PointPillarNet
 from segmentation.models.PIDNet import model as SemanticSegmentation 
 from segmentation.utils import visualize_semantic_processed
+from segmentation.utils import load_pretrained as load_pretrained_seg
+
 
 from PIL import Image, ImageFont, ImageDraw
 from torchvision import models
@@ -613,7 +615,8 @@ class LidarCenterNet(nn.Module):
         # semantic segmentation
         self.seg_model = SemanticSegmentation.get_pred_model("PIDNet-m", self.config.num_class).to(device)
         if self.config.load_seg_model: 
-            self.seg_model.load_state_dict(torch.load(self.config.seg_model_path))
+            self.seg_model = load_pretrained_seg(self.seg_model, self.config.seg_model_path)
+            self.seg_model.eval()
 
     def forward_gru(self, z, target_point):
         z = self.join(z)
@@ -690,7 +693,7 @@ class LidarCenterNet(nn.Module):
         return steer, throttle, brake
     
     def forward_ego(self, rgb, lidar_bev, target_point, target_point_image, ego_vel, bev_points=None, cam_points=None, save_path=None, expert_waypoints=None,
-                    stuck_detector=0, forced_move=False, num_points=None, rgb_back=None, debug=False):
+                    stuck_detector=0, forced_move=False, num_points=None, rgb_back=None, debug=False, rgb_uncropped=None):
         
         if(self.use_point_pillars == True):
             lidar_bev = self.point_pillar_net(lidar_bev, num_points)
@@ -728,19 +731,21 @@ class LidarCenterNet(nn.Module):
             pred_bev = self.pred_bev(features[0])
             pred_bev = F.interpolate(pred_bev, (self.config.bev_resolution_height, self.config.bev_resolution_width), mode='bilinear', align_corners=True)
 
-            rgbs = torch.tensor_split(rgb, 2, dim=3)
-            pred_sems = []
-            for i in range(len(rgbs)):
-                rgb_i = rgbs[i]
-                pred_sem = self.seg_model(rgb_i)[0]
-                resize = transforms.Resize(size = (rgb_i.shape[2], rgb_i.shape[3]))
-                pred_sems.append(resize(pred_sem))
-            pred_semantic = torch.cat(pred_sems, dim=2)
+            semantic_input = rgb_uncropped
+            semantic_input = collate.default_collate(semantic_input).unsqueeze(0)
+            semantic_input = semantic_input.float().permute(0,3,1,2).cuda()
+            # semantic_inputs = torch.tensor_split(semantic_input, 3, dim=3)
+            # pred_sems = []
+            # for i in range(len(semantic_inputs)):
+            #     semantic_input = semantic_inputs[i]
+            #     pred_sem = self.seg_model(semantic_input)[0]
+            #     resize = transforms.Resize(size = (semantic_input.shape[2], semantic_input.shape[3]))
+            #     pred_sems.append(resize(pred_sem))
+            # pred_semantic = torch.cat(pred_sems, dim=2)
 
-            # semantic_input = rgb
-            # pred_semantic = self.seg_model(semantic_input)[0]
-            # resize = transforms.Resize(size = (semantic_input.shape[2], semantic_input.shape[3]))
-            # pred_semantic = resize(pred_semantic)
+            pred_semantic = self.seg_model(semantic_input)[0]
+            resize = transforms.Resize(size = (rgb.shape[2], rgb.shape[3]))
+            pred_semantic = resize(pred_semantic)
             pred_depth = self.depth_decoder(image_features_grid)
 
             self.visualize_model_io(save_path, self.i, self.config, rgb, lidar_bev, target_point,

@@ -8,27 +8,12 @@ import cv2
 
 from models.PIDNet.model import get_pred_model
 import config
-from utils import log_eval_info
+from utils import log_eval_info, load_pretrained
 from seg_dataset import SegmentationDataset
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-def load_pretrained(model, pretrained_path):
-    pretrained_dict = torch.load(pretrained_path, map_location='cpu')
-    if 'state_dict' in pretrained_dict:
-        pretrained_dict = pretrained_dict['state_dict']
-    model_dict = model.state_dict()
-    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict} 
-    # pretrained_dict = {k[6:]: v for k, v in pretrained_dict.items() if (k[6:] in model_dict and v.shape == model_dict[k[6:]].shape)}
-    msg = 'Loaded {} parameters!'.format(len(pretrained_dict))
-    print('Attention!!!')
-    print(msg)
-    print('Over!!!')
-    model_dict.update(pretrained_dict)
-    model.load_state_dict(model_dict, strict = False)
-    
-    return model
 
 def main(args):
     torch.manual_seed(args.seed)
@@ -42,7 +27,7 @@ def main(args):
     print ("Model and weights loaded successfully")
 
     with torch.no_grad(): 
-        input_img = cv2.imread("assets/2555.jpg", cv2.IMREAD_COLOR)
+        input_img = cv2.imread("assets/rgb_0.png", cv2.IMREAD_COLOR)
         input_img = collate.default_collate(input_img).unsqueeze(0)
         input_img = input_img.float().permute(0,3,1,2).to(device)
         pred_sem = seg_model(input_img)
