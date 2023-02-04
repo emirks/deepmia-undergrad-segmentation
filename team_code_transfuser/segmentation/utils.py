@@ -7,6 +7,8 @@ import cv2
 import math
 from copy import deepcopy
 from sklearn.metrics import confusion_matrix
+import seaborn as sn
+import pandas as pd
 
 # from config import labels, SEM_COLORS
 import config
@@ -118,36 +120,47 @@ def adjust_learning_rate(optimizer, base_lr, max_iters, cur_iters, power=0.9, nb
         optimizer.param_groups[1]['lr'] = lr * nbb_mult
     return lr
 
-def get_confusion_matrix(label, pred, labels):
+def get_confusion_matrix(label, pred):
     """
         Calcute the confusion matrix by given label and pred
     """
     flat_label = label.flatten()
     flat_pred = pred.flatten()
 
-    cm = confusion_matrix(flat_label, flat_pred, labels)
+    cm = confusion_matrix(flat_label, flat_pred)
     return cm
 
-    # output = pred.cpu().numpy().transpose(0, 2, 3, 1)
-    # seg_pred = np.asarray(np.argmax(output, axis=3), dtype=np.uint8)
-    # seg_gt = np.asarray(
-    # label.cpu().numpy()[:, :size[-2], :size[-1]], dtype=np.int)
+def calculate_IoU_from_cm(confusion_mat): 
+    pos = confusion_mat.sum(1)
+    res = confusion_mat.sum(0)
+    tp = np.diag(confusion_mat)
+    IoU_array = (tp / np.maximum(1.0, pos + res - tp))
+    mean_IoU = IoU_array.mean()
+    return mean_IoU
 
-    # ignore_index = seg_gt != ignore
-    # seg_gt = seg_gt[ignore_index]
-    # seg_pred = seg_pred[ignore_index]
 
-    # index = (seg_gt * num_class + seg_pred).astype('int32')
-    # label_count = np.bincount(index)
-    # confusion_matrix = np.zeros((num_class, num_class))
-
-    # for i_label in range(num_class):
-    #     for i_pred in range(num_class):
-    #         cur_index = i_label * num_class + i_pred
-    #         if cur_index < len(label_count):
-    #             confusion_matrix[i_label, i_pred] = label_count[cur_index]
-    
-    return confusion_matrix
+def visualize_cm(confusion_mat, labels): 
+    class_names = {
+        1 : "building",
+        4 : "pedestrian",
+        5 : "pole",
+        6 : "line",
+        7 : "road",
+        8 : "sidewalk",
+        9 : "vegetation",
+        10: "vehicles",
+        18 : "traffic-light"
+    }
+    classes = ["empty"]
+    for label in labels: 
+        if label in class_names: 
+            classes.append(class_names[label])
+        else: 
+            classes.append("unknown class")
+    df_cm = pd.DataFrame(confusion_mat/np.sum(confusion_mat) * 10, index=[i for i in classes],
+                         columns=[i for i in classes])
+    plt.figure(figsize=(12, 7))    
+    return sn.heatmap(df_cm, annot=True).get_figure()
 
 def lidar_to_histogram_features(lidar):
     """

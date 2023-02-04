@@ -7,12 +7,12 @@ from torch.utils.tensorboard import SummaryWriter
 import tqdm
 
 # from models.ERFNet.model import SemanticSegmentation as SegmentationModel
-from models.PIDNetLidar.model import PIDNet as SegmentationModel
+# from models.PIDNetLidar.model import PIDNet as SegmentationModel
 # from models.PIDNet.model import PIDNet as SegmentationModel
-# from models.TransfuserModel.model import SegmentationModel
+from models.TransfuserModel.model import SegmentationModel
 
 from seg_dataset import SegmentationDataset
-from utils import visualize_semantic_processed, smooth_loss, BondaryLoss, adjust_learning_rate, get_confusion_matrix
+from utils import visualize_semantic_processed, smooth_loss, BondaryLoss, adjust_learning_rate, get_confusion_matrix, visualize_cm, calculate_IoU_from_cm
 import config
 
 import os
@@ -21,12 +21,6 @@ import numpy as np
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.cuda.empty_cache()
-
-train_it = 0
-val_it = 0
-total_iterations = 0
-# tensorboard writer
-writer = SummaryWriter()
 
 sem_loss = nn.CrossEntropyLoss(weight=config.class_weights)
 bd_loss = BondaryLoss()
@@ -48,10 +42,9 @@ def val_batch(batch, model : SegmentationModel):
     rgb, sem, pred_sem, loss = SegmentationModel.pass_from_model(model, batch, sem_loss, smooth_loss, bd_loss, device)
     sem = sem.cpu().detach().numpy()
     pred_sem = pred_sem.cpu().detach().numpy().argmax(1)
-    confusion_mat = get_confusion_matrix(sem, pred_sem, config.labels)
+    confusion_mat = get_confusion_matrix(sem, pred_sem)
 
     writer.add_scalar("Loss/val-per-batch", loss, val_it)
-    # TODO: add confusion matrix to tensorboard
 
     if val_it % args.num_per_log == 0: 
         loss = float(loss) 
@@ -84,7 +77,7 @@ def train_model(model, dataloader, optim, epoch):
 def val_model(model, dataloader, epoch): 
     model.eval()
     total_loss = 0
-    confusion_matrix = np.zeros((len(config.labels), len(config.labels)))
+    confusion_matrix = np.zeros((len(config.labels) + 1, len(config.labels) + 1))
 
     global val_it
     with torch.no_grad():    
@@ -95,12 +88,9 @@ def val_model(model, dataloader, epoch):
             val_it += 1
     avg_loss = total_loss / len(dataloader)    
 
-    pos = confusion_matrix.sum(1)
-    res = confusion_matrix.sum(0)
-    tp = np.diag(confusion_matrix)
-    IoU_array = (tp / np.maximum(1.0, pos + res - tp))
-    mean_IoU = IoU_array.mean()
+    mean_IoU = calculate_IoU_from_cm(confusion_matrix)
     writer.add_scalar("Avg-loss/val-per-epoch", avg_loss, epoch)
+    writer.add_figure("Confusion matrix", visualize_cm(confusion_matrix, config.labels), epoch)
     writer.add_scalar("Mean IoU/val-per-epoch", mean_IoU, epoch)
     return avg_loss, mean_IoU
 
@@ -191,4 +181,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Global variables
+    train_it = 0
+    val_it = 0
+    total_iterations = 0
+    # tensorboard writer
+    writer = SummaryWriter(f"runs/{args.model_name}")
+    
     main(args)
