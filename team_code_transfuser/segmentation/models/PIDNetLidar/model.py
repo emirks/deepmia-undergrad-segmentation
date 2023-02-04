@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import time
 import logging
+from torchvision.transforms import Resize
 
 from .model_utils import BasicBlock, Bottleneck, SegmentHead, DAPPM, PAPPM, Pag, Bag, LightBag, FusedToCameraAttention, FusedToLidarAttention
 
@@ -185,18 +186,18 @@ class PIDNet(nn.Module):
         lidar_branch = self.layer3_lidar(lidar_branch)
         image_branch = self.layer3_camera(image_branch)
         fused_branch = self.relu(self.layer3_fused(fused_branch))
-        lidar_branch = self.layer3_lidar_fused_att(lidar_branch, 
-                                self.layer3_compression_for_lidar(fused_branch))
-        image_branch = self.layer3_camera_fused_att(image_branch, 
-                                self.layer3_compression_for_camera(fused_branch))
+        lidar_branch = self.relu(self.layer3_lidar_fused_att(lidar_branch, 
+                                self.layer3_compression_for_lidar(fused_branch)))
+        image_branch = self.relu(self.layer3_camera_fused_att(image_branch, 
+                                self.layer3_compression_for_camera(fused_branch)))
 
         lidar_branch = self.layer4_lidar(lidar_branch)
         image_branch = self.layer4_camera(image_branch)
         fused_branch = self.relu(self.layer4_fused(fused_branch))
-        lidar_branch = self.layer4_lidar_fused_att(lidar_branch, 
-                                self.layer4_compression_for_lidar(fused_branch))
-        image_branch = self.layer4_camera_fused_att(image_branch, 
-                                self.layer4_compression_for_camera(fused_branch))
+        lidar_branch = self.relu(self.layer4_lidar_fused_att(lidar_branch, 
+                                self.layer4_compression_for_lidar(fused_branch)))
+        image_branch = self.relu(self.layer4_camera_fused_att(image_branch, 
+                                self.layer4_compression_for_camera(fused_branch)))
 
         lidar_branch = self.layer5_lidar(lidar_branch)
         image_branch = self.layer5_camera(image_branch)
@@ -205,6 +206,34 @@ class PIDNet(nn.Module):
         lidar_branch = self.upsample(lidar_branch, output_size)
         out = self.final_layer(self.dfm(lidar_branch, fused_branch, image_branch))
         return out
+
+    @staticmethod
+    def initialize(num_classes):
+        return PIDNet(m=2, n=3, num_classes=num_classes, planes=64, ppm_planes=96, head_planes=128, augment=True)
+    
+    @staticmethod
+    def pass_from_model(model, batch, sem_loss, smooth_loss, bd_loss, device = "cuda"):
+        rgb, sem, edge, lidar_bev, fused = batch
+        rgb = rgb.float().permute(0,3,1,2).to(device) 
+        lidar_bev = lidar_bev.float().permute(0,3,1,2).to(device)
+        fused = fused.float().permute(0,3,1,2).to(device)
+        sem = sem.long().to(device) 
+        edge = edge.float().to(device)
+
+        pred_sem = model(rgb, lidar_bev, fused)
+        resize = Resize(size = (rgb.shape[2], rgb.shape[3]))
+        pred_sem = resize(pred_sem)
+        disparity = nn.Sigmoid()(pred_sem)
+        loss = sem_loss(pred_sem, sem)
+
+        # calculate smoothness and add it to the loss
+        mean_disp = disparity.mean(2, True).mean(3, True)
+        norm_disp = disparity / (mean_disp + 1e-7)
+        loss += smooth_loss(norm_disp, rgb)
+        loss = torch.unsqueeze(loss,0).mean()
+
+        return rgb, sem, pred_sem, loss
+
 
 def get_seg_model(cfg, imgnet_pretrained):
     if 's' in cfg.MODEL.NAME:

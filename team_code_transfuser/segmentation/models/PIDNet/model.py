@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import time
 import logging
+from torchvision.transforms import Resize
 
 from .model_utils import BasicBlock, Bottleneck, SegmentHead, DAPPM, PAPPM, Pag, Bag, LightBag, DisparityBlock
 
@@ -135,30 +136,30 @@ class PIDNet(nn.Module):
         # layer 1 and 2
         out = x
         out = self.conv1(out) 
-        out = self.layer1(out) 
-        out = self.relu(self.layer2(self.relu(out)))
+        out = self.relu(self.layer1(out)) 
+        out = self.relu(self.layer2(out))
         
         # layer 3
         out_p = self.layer3_p(out) 
         out_d = self.layer3_d(out)
         out_i = self.relu(self.layer3_i(out)) 
-        out_p = self.layer3_pag(out_p, self.layer3_compression(out_i))
-        out_d = out_d + self.upsample(self.layer3_diff(out_i), output_size)
+        out_p = self.relu(self.layer3_pag(out_p, self.layer3_compression(out_i)))
+        out_d = self.relu(out_d + self.upsample(self.layer3_diff(out_i), output_size))
         if self.augment: 
             temp_p = out_p
         
         # layer 4
-        out_p = self.layer4_p(self.relu(out_p)) 
-        out_d = self.layer4_d(self.relu(out_d)) 
+        out_p = self.layer4_p(out_p) 
+        out_d = self.layer4_d(out_d) 
         out_i = self.relu(self.layer4_i(out_i))
-        out_p = self.layer4_pag(out_p, self.layer4_compression(out_i))
-        out_d = out_d + self.upsample(self.layer4_diff(out_i), output_size)
+        out_p = self.relu(self.layer4_pag(out_p, self.layer4_compression(out_i)))
+        out_d = self.relu(out_d + self.upsample(self.layer4_diff(out_i), output_size))
         if self.augment: 
             temp_d = out_d
 
         # layer 5
-        out_p = self.layer5_p(self.relu(out_p))
-        out_d = self.layer5_d(self.relu(out_d))
+        out_p = self.layer5_p(out_p)
+        out_d = self.layer5_d(out_d)
         out_i = self.upsample(self.ppm(self.layer5_i(out_i)), output_size)
 
         # combine P, I, D
@@ -171,58 +172,35 @@ class PIDNet(nn.Module):
         else: 
             return out
     
-    def pass_from_model(self, rgb, sem, edge, config_file):
-        if config_file.split_cameras: 
-            camera_count = len(config_file.camera_rots)
-            rgbs = torch.tensor_split(rgb, camera_count, dim=3)
-            sems = torch.tensor_split(sem, camera_count, dim=2)
-            edges = torch.tensor_split(edge, camera_count, dim=2)
-            pred_sems = []
-            losses = []
-            for i in range(camera_count):
-                rgb_i, sem_i, edge_i = rgbs[i], sems[i], edges[i] 
-                out_p_loss, pred_sem, out_d_loss = model(rgb_i)
-                resize = Resize(size = (rgb_i.shape[2], rgb_i.shape[3]))
-                pred_sem = resize(pred_sem)
-                out_p_loss = resize(out_p_loss)
-                out_d_loss = resize(out_d_loss)
+    @staticmethod
+    def initialize(num_classes):
+        return PIDNet(m=2, n=3, num_classes=num_classes, planes=64, ppm_planes=96, head_planes=128, augment=True)
 
-                loss_s = config_file.sem_loss(pred_sem, sem_i)
-                loss_b = config_file.bd_loss()(out_d_loss, edge_i)
-                loss = loss_s + loss_b
-                
-                # calculate smoothness and add it to the loss
-                disparity = nn.Sigmoid()(pred_sem)
-                mean_disp = disparity.mean(2, True).mean(3, True)
-                norm_disp = disparity / (mean_disp + 1e-7)
-                smooth_loss = get_smooth_loss(norm_disp, rgb_i)
-                loss += config.disparity_smoothness * smooth_loss     
-                loss = torch.unsqueeze(loss,0).mean()   
-                
-                losses.append(loss)
-                pred_sems.append(pred_sem)
-            pred_sem = torch.cat(pred_sems, dim=3) 
-            loss = sum(losses)
-        else: 
-            out_p_loss, pred_sem, out_d_loss = model(rgb)
-            resize = Resize(size = (rgb.shape[2], rgb.shape[3]))
-            pred_sem = resize(pred_sem)
-            out_p_loss = resize(out_p_loss)
-            out_d_loss = resize(out_d_loss)
-            disparity = nn.Sigmoid()(pred_sem)
+    @staticmethod
+    def pass_from_model(model, batch, sem_loss, smooth_loss, bd_loss, device = "cuda"):
+        rgb, sem, edge = batch[:3]
+        rgb = rgb.float().permute(0,3,1,2).to(device) 
+        sem = sem.long().to(device) 
+        edge = edge.float().to(device)
 
-            loss_s = sem_loss(pred_sem, sem)
-            loss_b = BondaryLoss()(out_d_loss, edge)
+        out_p_loss, pred_sem, out_d_loss = model(rgb)
+        resize = Resize(size = (rgb.shape[2], rgb.shape[3]))
+        pred_sem = resize(pred_sem)
+        out_p_loss = resize(out_p_loss)
+        out_d_loss = resize(out_d_loss)
+        disparity = nn.Sigmoid()(pred_sem)
 
-            loss = loss_s + loss_b
-            # calculate smoothness and add it to the loss
-            mean_disp = disparity.mean(2, True).mean(3, True)
-            norm_disp = disparity / (mean_disp + 1e-7)
-            smooth_loss = get_smooth_loss(norm_disp, rgb)
-            loss += config.disparity_smoothness * smooth_loss
-            loss = torch.unsqueeze(loss,0).mean()
+        loss_s = sem_loss(pred_sem, sem)
+        loss_b = bd_loss(out_d_loss, edge)
 
-        return pred_sem, loss        
+        loss = loss_s + loss_b
+        # calculate smoothness and add it to the loss
+        mean_disp = disparity.mean(2, True).mean(3, True)
+        norm_disp = disparity / (mean_disp + 1e-7)
+        loss += smooth_loss(norm_disp, rgb)
+        loss = torch.unsqueeze(loss,0).mean()
+
+        return rgb, sem, pred_sem, loss
 
 
 def get_seg_model(cfg, imgnet_pretrained):

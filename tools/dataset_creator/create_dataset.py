@@ -110,8 +110,8 @@ if __name__ == "__main__":
 
 
     # Beginning data capture proccedure
-    save_path = "/home/transfuser/autonomous_car/transfuser-erkam/semantic-segmentation-dataset"
-    HDF5_file = HDF5Saver(os.path.join(save_path, args.hdf5_file + ".hdf5"), groups=sensor_attrs)
+    hdf5_file_path = f"{config.SAVE_DIR}/datasets/{args.hdf5_file}.hdf5"
+    HDF5_file = HDF5Saver(hdf5_file_path, groups=sensor_attrs)
     print("HDF5 File opened")
 
     timestamps = []
@@ -136,4 +136,4 @@ if __name__ == "__main__":
 
     # For later visualization
     if args.video:
-        create_video_sample(os.path.join(save_path, args.hdf5_file + ".hdf5"), args.width, args.height)
+        create_video_sample(hdf5_file_path, args.width, args.height)

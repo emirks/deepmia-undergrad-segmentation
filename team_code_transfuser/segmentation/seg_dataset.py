@@ -42,20 +42,14 @@ def filter_sem(sem, labels=config.labels):
 
 class SegmentationDataset(Dataset): 
     def __init__(self, hdf5_file_name, 
-            dataset_mode="train", 
             mean=[0.485, 0.456, 0.406], 
             std=[0.229, 0.224, 0.225]):
         super(SegmentationDataset, self).__init__()
         self.size = 0
-        self.path = "/home/transfuser/autonomous_car/transfuser-erkam/semantic-segmentation-dataset"
 
-        hdf5_file_path = f"{self.path}/{hdf5_file_name}.hdf5"
+        hdf5_file_path = f"{config.SAVE_DIR}/datasets/{hdf5_file_name}.hdf5"
         self.hdf5_file = h5py.File(hdf5_file_path, 'r')
-        if dataset_mode == "test": 
-            # If dataset is for testing, then only take 50 images. 
-            self.file_timestamps = self.hdf5_file['timestamps']['timestamps'][:50]
-        else: 
-            self.file_timestamps = self.hdf5_file['timestamps']['timestamps']
+        self.file_timestamps = self.hdf5_file['timestamps']['timestamps']
 
         self.size = len(self.file_timestamps)
 
@@ -199,14 +193,12 @@ class SegmentationDataset(Dataset):
         lidar_camera_proj = np.concatenate(lidar_camera_proj, axis=1)
 
         lidar_bev = lidar_to_bev(lidar)
-        
-
 
         rgb = self.augmenter(images=rgb[...,::-1][None])[0]
         semantic = filter_sem(semantic)
         rgb, semantic, edge = self.gen_sample(rgb, semantic)
 
-        return rgb, lidar_bev, lidar_camera_proj, semantic, edge
+        return rgb, semantic, edge, lidar_bev, lidar_camera_proj
 
 if __name__ == '__main__':
     dataset = SegmentationDataset("deneme")

@@ -8,7 +8,8 @@ import math
 from copy import deepcopy
 from sklearn.metrics import confusion_matrix
 
-from config import labels, SEM_COLORS
+# from config import labels, SEM_COLORS
+import config
 
 
 def load_pretrained(model, pretrained_path):
@@ -25,10 +26,10 @@ def load_pretrained(model, pretrained_path):
     
     return model
 
-def visualize_semantic_processed(sem, labels=labels):
+def visualize_semantic_processed(sem, labels=config.labels):
     canvas = np.zeros(sem.shape+(3,), dtype=np.uint8)
     for i,label in enumerate(labels):
-        canvas[sem==i+1] = SEM_COLORS[label]
+        canvas[sem==i+1] = config.SEM_COLORS[label]
 
     return canvas
 
@@ -46,7 +47,7 @@ def log_train_info(seg_info, counter):
     ax2.imshow(visualize_semantic_processed(sem))
     ax3.imshow(visualize_semantic_processed(pred_sem))
     #plt.show()
-    plt.savefig(f"./logs/log-{counter}.png")
+    plt.savefig(f"{config.SAVE_DIR}/logs/log-{counter}.png")
     del rgb, sem, pred_sem
 
     plt.close('all')
@@ -63,7 +64,7 @@ def log_eval_info(seg_info):
 
     plt.close('all')
 
-def get_smooth_loss(disp, img):
+def smooth_loss(disp, img):
     """Computes the smoothness loss for a disparity image
     The color image is used for edge-aware smoothness
     """
@@ -76,7 +77,8 @@ def get_smooth_loss(disp, img):
     grad_disp_x *= torch.exp(-grad_img_x)
     grad_disp_y *= torch.exp(-grad_img_y)
 
-    return grad_disp_x.mean() + grad_disp_y.mean()
+    smooth_loss = grad_disp_x.mean() + grad_disp_y.mean()
+    return smooth_loss * config.disparity_smoothness
 
 def weighted_bce(bd_pre, target):
     log_p = bd_pre.permute(0,2,3,1).contiguous().view(1, -1)
