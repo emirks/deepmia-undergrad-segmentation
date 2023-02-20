@@ -7,9 +7,9 @@ from torch.utils.tensorboard import SummaryWriter
 import tqdm
 
 # from models.ERFNet.model import SemanticSegmentation as SegmentationModel
-# from models.PIDNetLidar.model import PIDNet as SegmentationModel
+from models.PIDNetLidar.model import PIDNet as SegmentationModel
 # from models.PIDNet.model import PIDNet as SegmentationModel
-from models.TransfuserModel.model import SegmentationModel
+# from models.TransfuserModel.model import SegmentationModel
 
 from seg_dataset import SegmentationDataset
 from utils import visualize_semantic_processed, smooth_loss, BondaryLoss, adjust_learning_rate, get_confusion_matrix, visualize_cm, calculate_IoU_from_cm

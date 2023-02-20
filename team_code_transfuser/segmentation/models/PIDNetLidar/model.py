@@ -18,28 +18,31 @@ class PIDNet(nn.Module):
         self.augment = augment
         self.relu = nn.ReLU(inplace=True)
         self.upsample = lambda x, size : F.interpolate(x, size, mode="bilinear", align_corners=algc)
+        self.img_anchors = (5, 22)
+        self.lidar_anchors = (8, 8)
+
 
         # Fused Branch 
-        # (B, 3, H, W) --> (B, C, H/4, W/4)
+        # (B, 4, H, W) --> (B, C, H/4, W/4)
         self.layer0_fused = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=planes, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(in_channels=4, out_channels=planes, kernel_size=3, stride=2, padding=1),
             batch_norm(planes, momentum=bn_mom), 
             nn.ReLU(inplace=True),
             nn.Conv2d(planes, planes, kernel_size=3, stride=2, padding=1),
             batch_norm(planes, momentum=bn_mom), 
             nn.ReLU(inplace=True)
         )
-        # (B, C, H, W) --> (B, C, H, W)
+        # (B, C, H/4, W/4) --> (B, C, H/4, W/4)
         self.layer1_fused = self._make_layer(BasicBlock, planes, planes, m)
-        # (B, C, H, W) --> (B, 2*C, H, W)
+        # (B, C, H/4, W/4) --> (B, 2*C, H/8, W/8)
         self.layer2_fused = self._make_layer(BasicBlock, planes, planes * 2, m, stride=2)
-        # (B, 2*C, H, W) --> (B, 4*C, H, W)
+        # (B, 2*C, H/8, W/8) --> (B, 4*C, H/16, W/16)
         self.layer3_fused = self._make_layer(BasicBlock, planes * 2, planes * 4, n, stride=2)
-        # (B, 4*C, H, W) --> (B, 8*C, H, W)
+        # (B, 4*C, H/16, W/16) --> (B, 8*C, H/32, W/32)
         self.layer4_fused = self._make_layer(BasicBlock, planes * 4, planes * 8, n, stride=2)
-        # (B, 8*C, H, W) --> (B, 16*C, H, W)
+        # (B, 8*C, H/32, W/32) --> (B, 16*C, H/64, W/64)
         self.layer5_fused = self._make_layer(Bottleneck, planes * 8, planes * 8, 2, stride=2)
-        # (B, 16*C, H, W) --> (B, 4*C, H, W)
+        # (B, 16*C, H/64, W/64) --> (B, 4*C, H/64, W/64)
         if m == 2: 
             self.ppm = PAPPM(planes * 16, ppm_planes, planes * 4)
         elif m == 3: 
@@ -47,7 +50,7 @@ class PIDNet(nn.Module):
 
 
         # Lidar Branch
-        # (B, 3, H, W) --> (B, C, H, W)
+        # (B, 2, H, W) --> (B, C, H/4, W/4)
         self.layer0_lidar = nn.Sequential(
             nn.Conv2d(in_channels=2, out_channels=planes, kernel_size=3, stride=2, padding=1),
             batch_norm(planes, momentum=bn_mom), 
@@ -56,20 +59,20 @@ class PIDNet(nn.Module):
             batch_norm(planes, momentum=bn_mom), 
             nn.ReLU(inplace=True)
         )
-        # (B, C, H, W) --> (B, C, H, W)
+        # (B, C, H/4, W/4) --> (B, C, H/4, W/4)
         self.layer1_lidar = self._make_layer(BasicBlock, planes, planes, m)
-        # (B, C, H, W) --> (B, 2*C, H, W)
+        # (B, C, H/4, W/4) --> (B, 2*C, H/8, W/8)
         self.layer2_lidar = self._make_layer(BasicBlock, planes, planes * 2, m, stride=2)
-        # (B, 2*C, H, W) --> (B, 2*C, H, W)
+        # (B, 2*C, H/8, W/8) --> (B, 2*C, H/8, W/8)
         self.layer3_lidar = self._make_layer(BasicBlock, planes * 2, planes * 2, m)
-        # (B, 2*C, H, W) --> (B, 2*C, H, W)
+        # (B, 2*C, H/8, W/8) --> (B, 2*C, H/8, W/8)
         self.layer4_lidar = self._make_layer(BasicBlock, planes * 2, planes * 2, m)
-        # (B, 2*C, H, W) --> (B, 4*C, H, W)
+        # (B, 2*C, H/8, W/8) --> (B, 4*C, H/8, W/8)
         self.layer5_lidar = self._make_layer(Bottleneck, planes * 2, planes * 2, 1)
 
 
         # Camera Branch
-        # (B, 3, H, W) --> (B, C, H, W)
+        # (B, 3, H, W) --> (B, C, H/4, W/4)
         self.layer0_camera = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=planes, kernel_size=3, stride=2, padding=1),
             batch_norm(planes, momentum=bn_mom), 
@@ -78,26 +81,28 @@ class PIDNet(nn.Module):
             batch_norm(planes, momentum=bn_mom), 
             nn.ReLU(inplace=True)
         )
-        # (B, C, H, W) --> (B, C, H, W)        
+        # (B, C, H/4, W/4) --> (B, C, H/4, W/4)        
         self.layer1_camera = self._make_layer(BasicBlock, planes, planes, m)
-        # (B, C, H, W) --> (B, 2*C, H, W)
+        # (B, C, H/4, W/4) --> (B, 2*C, H/8, W/8)
         self.layer2_camera = self._make_layer(BasicBlock, planes, planes * 2, m, stride=2)
-        # (B, 2*C, H, W) --> (B, 2*C, H, W)
-        # (B, 2*C, H, W) --> (B, 2*C, H, W)
+        # (B, C, H/8, W/8) --> (B, 2*C, H/8, W/8)
+        # (B, 2*C, H/8, W/8) --> (B, 2*C, H/8, W/8)
         if m == 2: 
             self.layer3_camera = self._make_single_layer(BasicBlock, planes * 2, planes * 2)
             self.layer4_camera = self._make_layer(Bottleneck, planes * 2, planes, 1)
         elif m == 3: 
             self.layer3_camera = self._make_single_layer(BasicBlock, planes * 2, planes * 2)
             self.layer4_camera = self._make_single_layer(BasicBlock, planes * 2, planes * 2)
-        # (B, 2*C, H, W) --> (B, 4*C, H, W)
+        # (B, 2*C, H/8, W/8) --> (B, 4*C, H/8, W/8)
         self.layer5_camera = self._make_layer(Bottleneck, planes * 2, planes * 2, 1)
         
 
         # Attentions and branch combinations
         # Lidar Branch
-        self.layer3_lidar_fused_att = FusedToLidarAttention(planes * 2, n_head=4, attn_pdrop=0.1, resid_pdrop=0.1) 
-        self.layer4_lidar_fused_att = FusedToLidarAttention(planes * 2, n_head=4, attn_pdrop=0.1, resid_pdrop=0.1)     
+        self.layer3_lidar_fused_att = FusedToLidarAttention(planes * 2, n_head=4, attn_pdrop=0.1, resid_pdrop=0.1, 
+            img_anchors=self.img_anchors, lidar_anchors=self.lidar_anchors) 
+        self.layer4_lidar_fused_att = FusedToLidarAttention(planes * 2, n_head=4, attn_pdrop=0.1, resid_pdrop=0.1, 
+            img_anchors=self.img_anchors, lidar_anchors=self.lidar_anchors)     
         self.layer3_compression_for_lidar = nn.Sequential(
             nn.Conv2d(planes * 4, planes * 2, kernel_size=1, bias=False),
             batch_norm(planes * 2, momentum=bn_mom)
@@ -108,8 +113,10 @@ class PIDNet(nn.Module):
         )
 
         # Camera Branch
-        self.layer3_camera_fused_att = FusedToCameraAttention(planes * 2, n_head=4, attn_pdrop=0.1, resid_pdrop=0.1) 
-        self.layer4_camera_fused_att = FusedToCameraAttention(planes * 2, n_head=4, attn_pdrop=0.1, resid_pdrop=0.1) 
+        self.layer3_camera_fused_att = FusedToCameraAttention(planes * 2, n_head=4, attn_pdrop=0.1, resid_pdrop=0.1, 
+            img_anchors=self.img_anchors) 
+        self.layer4_camera_fused_att = FusedToCameraAttention(planes * 2, n_head=4, attn_pdrop=0.1, resid_pdrop=0.1,
+            img_anchors=self.img_anchors) 
         self.layer3_compression_for_camera = nn.Sequential(
             nn.Conv2d(planes * 4, planes * 2, kernel_size=3, padding=1, bias=False),
             batch_norm(planes * 2, momentum=bn_mom)
@@ -162,14 +169,10 @@ class PIDNet(nn.Module):
         layer = block(inplanes, outplanes, stride, apply_relu=False)
         return layer
 
-    def forward(self, image_input, lidar_bev_input, fused_input): 
-        input_width = image_input.shape[3]
-        input_height = image_input.shape[2]
+    def forward(self, image_branch, lidar_branch, fused_branch): 
+        input_width = image_branch.shape[3]
+        input_height = image_branch.shape[2]
         output_size = [input_height//8, input_width//8]
-
-        image_branch = image_input
-        lidar_branch = lidar_bev_input
-        fused_branch = fused_input
 
         lidar_branch = self.layer0_lidar(lidar_branch)
         image_branch = self.layer0_camera(image_branch)
@@ -201,9 +204,11 @@ class PIDNet(nn.Module):
 
         lidar_branch = self.layer5_lidar(lidar_branch)
         image_branch = self.layer5_camera(image_branch)
-        fused_branch = self.upsample(self.ppm(self.layer5_fused(fused_branch)), output_size)
+        fused_branch = self.ppm(self.layer5_fused(fused_branch))
 
-        lidar_branch = self.upsample(lidar_branch, output_size)
+        lidar_branch = self.upsample(lidar_branch, [output_size[1], output_size[1]])
+        fused_branch = self.upsample(fused_branch, output_size)
+        # image_branch = self.upsample(image_branch, output_size)
         out = self.final_layer(self.dfm(lidar_branch, fused_branch, image_branch))
         return out
 

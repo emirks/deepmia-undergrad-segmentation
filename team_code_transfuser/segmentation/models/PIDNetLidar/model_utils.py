@@ -323,48 +323,67 @@ class Pag(nn.Module):
 
 class MultiHeadAttention(nn.Module): 
     """
-        args: dim, num_heads, attn_pdrop, resid_pdrop
+        args: 
+        embed_dim -->  The channel size of attention(all q, k and v should have C as embed_dim)
+        num_heads
+        attn_pdrop
+        resid_pdrop
 
         forward shape transformation: 
-            (B, T, C), (B, T, C), (B, T, C) --> (B, T, C)
+            (B, Q_T, C), (B, KV_T, C), (B, KV_T, C) --> (B, Q_T, C)
+            or
+            (B, T, C) --> (B, T, C)
     """
-    def __init__(self, dim, num_heads, attn_pdrop, resid_pdrop) -> None:
+    def __init__(self, embed_dim, num_heads, attn_pdrop, resid_pdrop) -> None:
         super().__init__()
-        assert dim % num_heads == 0
+        assert embed_dim % num_heads == 0
 
+        self.embed_dim = embed_dim
         self.n_head = num_heads
-        self.key = nn.Linear(dim, dim)
-        self.query = nn.Linear(dim, dim)
-        self.value = nn.Linear(dim, dim)
+        self.key = nn.Linear(self.embed_dim, self.embed_dim)
+        self.query = nn.Linear(self.embed_dim, self.embed_dim)
+        self.value = nn.Linear(self.embed_dim, self.embed_dim)
 
         self.attn_drop = nn.Dropout(attn_pdrop)
         self.resid_drop = nn.Dropout(resid_pdrop)
 
-        self.proj = nn.Linear(dim, dim)
+        self.proj = nn.Linear(self.embed_dim, self.embed_dim)
     
     def _reshape_to_batches(self, x): 
-        batch_size, seq_len, in_feature = x.size()
-        sub_dim = in_feature // self.n_head
+        batch_size, seq_len, embed_dim = x.size()
+        assert embed_dim == self.embed_dim
+        sub_dim = embed_dim // self.n_head
         return x.view(batch_size, seq_len, self.n_head, sub_dim).transpose(1, 2)
     
     def _reshape_from_batches(self, x): 
-        batch_size, n_head, seq_len, in_feature = x.size()
+        batch_size, n_head, seq_len, sub_dim = x.size()
         assert n_head == self.n_head
-        out_dim = in_feature * self.n_head
+        out_dim = sub_dim * self.n_head
+        assert out_dim == self.embed_dim
         return x.transpose(1, 2).contiguous().view(batch_size, seq_len, out_dim)
         
-    def forward(self, k, q, v): 
-        assert k.size() == q.size() == v.size()
-        k = self._reshape_to_batches(self.key(k)) 
-        q = self._reshape_to_batches(self.query(q))
-        v = self._reshape_to_batches(self.value(v))
+    def forward(self, q, k = None, v = None): 
+        kv_same = torch.equal(k, v)
+        if kv_same and k == None and v == None: 
+            # self-attention
+            k = v = q
+        # Initial sizes: 
+        # q -> (B, q_seq_len, C)
+        # k -> (B, kv_seq_len, C)
+        # v -> (B, kv_seq_len, C)
+        assert k.size() == v.size()
 
-        # self-attend: (B, nh, seq_len, sub_dim) x (B, nh, sub_dim, seq_len) -> (B, nh, seq_len, seq_len)
+        q = self._reshape_to_batches(self.query(q)) # (B, nh, q_seq_len, sub_dim)
+        k = self._reshape_to_batches(self.key(k)) # (B, nh, kv_seq_len, sub_dim)
+        v = self._reshape_to_batches(self.value(v)) # (B, nh, kv_seq_len, sub_dim)
+
+        # self-attend: (B, nh, q_seq_len, sub_dim) x (B, nh, sub_dim, kv_seq_len) -> (B, nh, q_seq_len, kv_seq_len)
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
         att = F.softmax(att, dim=-1)
         att = self.attn_drop(att)
-        y = att @ v # (B, nh, seq_len, seq_len) x (B, nh, seq_len, sub_dim) -> (B, nh, seq_len, sub_dim)
+        y = att @ v # (B, nh, q_seq_len, kv_seq_len) x (B, nh, kv_seq_len, sub_dim) -> (B, nh, q_seq_len, sub_dim)
         y = self._reshape_from_batches(y) # re-assemble all head outputs side by side
+        # y -> (B, q_seq_len, embed_dim)
 
         # output projection
         y = self.resid_drop(self.proj(y))
@@ -378,11 +397,15 @@ class FusedToLidarAttention(nn.Module):
         forward shape transformation: 
             (B, C, H1, W1), (B, C, H2, W2) --> (B, C, H1, W1)
     """
-    def __init__(self, n_channels, n_head, attn_pdrop, resid_pdrop, 
+    def __init__(self, n_channels, n_head, attn_pdrop, resid_pdrop, img_anchors, lidar_anchors, 
                 apply_relu_first=False) -> None:
         super(FusedToLidarAttention, self).__init__()
 
         self.apply_relu_first = apply_relu_first
+
+        self.avgpool_img = nn.AdaptiveAvgPool2d(img_anchors)
+        self.avgpool_lidar = nn.AdaptiveAvgPool2d(lidar_anchors)
+
         self.f_fused_data = nn.Sequential(
             nn.Conv2d(n_channels, n_channels, kernel_size=1, bias=False),
             batch_norm(n_channels)
@@ -391,6 +414,9 @@ class FusedToLidarAttention(nn.Module):
             nn.Conv2d(n_channels, n_channels, kernel_size=1, bias=False), 
             batch_norm(n_channels)
         )
+        self.f_fused_collapsed = nn.Sequential(
+            nn.Conv1d(n_channels, n_channels, kernel_size=1, bias=False)
+        )
         if apply_relu_first: 
             self.relu = nn.ReLU(inplace=True)
         
@@ -398,24 +424,38 @@ class FusedToLidarAttention(nn.Module):
         self.multihead_att = MultiHeadAttention(n_channels, n_head, attn_pdrop, resid_pdrop)
         self.att_ln = nn.LayerNorm(n_channels)
 
+    def collapse_image_for_bev(self, image): 
+        batch_size, num_channel, img_h, img_w = image.shape
+        img_collapsed = image.max(2).values # [BS, C, W]
+        img_collapsed = self.f_fused_collapsed(img_collapsed).view(batch_size, num_channel, img_w)
+        return img_collapsed
+
     def forward(self, lidar_data, fused_data): 
+        lidar_input_data = lidar_data
+        lidar_data = self.avgpool_lidar(lidar_data)
+        fused_data = self.avgpool_img(fused_data)
+
         lidar_h, lidar_w = lidar_data.shape[2:4]
-        # fused_h, fused_w = fused_data.shape[2:4]
+        fused_h, fused_w = fused_data.shape[2:4]
         if self.apply_relu_first:
             lidar_data = self.relu(lidar_data) 
             fused_data = self.relu(fused_data)
 
         fused_data = self.f_fused_data(fused_data)
-        fused_data = upsample(fused_data, [lidar_h, lidar_w])
         lidar_data = self.f_lidar_data(lidar_data)
+        fused_data = upsample(fused_data, [fused_h, lidar_w])
+        fused_data = self.collapse_image_for_bev(fused_data)
 
         batch = fused_data.shape[0]
-        fused_data = fused_data.view(batch, -1, lidar_h, lidar_w).permute(0,2,3,1).contiguous().view(batch, -1, self.n_channels)
+        fused_data = fused_data.view(batch, self.n_channels, fused_data.shape[2]).permute(0, 2, 1).contiguous()
+        # fused_data = fused_data.view(batch, -1, lidar_h, lidar_w).permute(0,2,3,1).contiguous().view(batch, -1, self.n_channels)
         lidar_data = lidar_data.view(batch, -1, lidar_h, lidar_w).permute(0,2,3,1).contiguous().view(batch, -1, self.n_channels)
 
-        out = self.att_ln(self.multihead_att(lidar_data, fused_data, lidar_data))
+        out = self.att_ln(self.multihead_att(lidar_data, fused_data, fused_data))
 
         out = out.view(batch, lidar_h*lidar_w, self.n_channels).contiguous().view(batch, self.n_channels, lidar_h, lidar_w)
+        out = upsample(out, lidar_input_data.shape[2:4])
+        out = out + lidar_input_data
         return out
 
 class FusedToCameraAttention(nn.Module): 
@@ -425,9 +465,11 @@ class FusedToCameraAttention(nn.Module):
         forward shape transformation: 
             (B, C, H1, W1), (B, C, H2, W2) --> (B, C, H1, W1)
     """
-    def __init__(self, n_channels, n_head, attn_pdrop, resid_pdrop, 
+    def __init__(self, n_channels, n_head, attn_pdrop, resid_pdrop, img_anchors,
                 apply_relu_first=False) -> None:
         super(FusedToCameraAttention, self).__init__()
+
+        self.avgpool_img = nn.AdaptiveAvgPool2d(img_anchors)
 
         self.apply_relu_first = apply_relu_first
         self.f_fused_data = nn.Sequential(
@@ -446,22 +488,28 @@ class FusedToCameraAttention(nn.Module):
         self.att_ln = nn.LayerNorm(n_channels)
 
     def forward(self, camera_data, fused_data): 
+        camera_initial_data = camera_data
+        fused_data = self.avgpool_img(fused_data)
+        camera_data = self.avgpool_img(camera_data)
+
         camera_h, camera_w = camera_data.shape[2:4]
         if self.apply_relu_first:
             camera_data = self.relu(camera_data) 
             fused_data = self.relu(fused_data)
 
         fused_data = self.f_fused_data(fused_data)
-        fused_data = upsample(fused_data, [camera_h, camera_w])
         camera_data = self.f_camera_data(camera_data)
+        # fused_data = upsample(fused_data, [camera_h, camera_w])
 
         batch = fused_data.shape[0]
         fused_data = fused_data.view(batch, -1, camera_h, camera_w).permute(0,2,3,1).contiguous().view(batch, -1, self.n_channels)
         camera_data = camera_data.view(batch, -1, camera_h, camera_w).permute(0,2,3,1).contiguous().view(batch, -1, self.n_channels)
 
-        out = self.att_ln(self.multihead_att(camera_data, fused_data, camera_data))
+        out = self.att_ln(self.multihead_att(camera_data, fused_data, fused_data))
 
         out = out.view(batch, camera_h*camera_w, self.n_channels).contiguous().view(batch, self.n_channels, camera_h, camera_w)
+        out = upsample(out, camera_initial_data.shape[2:4])
+        out = out + camera_initial_data
         return out
 
 
@@ -499,14 +547,27 @@ class LightBag(nn.Module):
         super(LightBag, self).__init__()
         self.conv_p = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
-            batch_norm(in_channels),
+            batch_norm(out_channels),
         )
         self.conv_i = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
-            batch_norm(in_channels),
+            batch_norm(out_channels),
+        )
+        self.f_lidar_converted = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, kernel_size=1, bias=False),
         )
 
+    
+    def lidar_bev_to_image(self, lidar_bev, image_h): 
+        lidar_collapsed = lidar_bev.max(2).values.unsqueeze(2) # [B, C, 1, W]
+        lidar_extended = torch.cat([lidar_collapsed]*image_h, axis=2) # [B, C, H, W]
+        lidar_extended = self.f_lidar_converted(lidar_extended)
+        return lidar_extended
+
+
     def forward(self, p, i, d): 
+        B, C, image_h, image_w = i.shape
+        p = self.lidar_bev_to_image(p, image_h)
         boundary_attr = torch.sigmoid(d) 
         p_add = self.conv_p(boundary_attr * p + i) 
         i_add = self.conv_i((1 - boundary_attr) * i + p)

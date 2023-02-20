@@ -131,15 +131,19 @@ class SegmentationDataset(Dataset):
         # # Since at the time of the creation of this script, the intensity function
         # # is returning high values, these are adjusted to be nicely visualized.
         intensity = 4 * intensity - 3
+        # color_map = np.array([
+        #     np.interp(intensity, VID_RANGE, VIRIDIS[:, 0]) * 255.0,
+        #     np.interp(intensity, VID_RANGE, VIRIDIS[:, 1]) * 255.0,
+        #     np.interp(intensity, VID_RANGE, VIRIDIS[:, 2]) * 255.0]).astype(np.int).T
         color_map = np.array([
-            np.interp(intensity, VID_RANGE, VIRIDIS[:, 0]) * 255.0,
-            np.interp(intensity, VID_RANGE, VIRIDIS[:, 1]) * 255.0,
-            np.interp(intensity, VID_RANGE, VIRIDIS[:, 2]) * 255.0]).astype(np.int).T
+            np.interp(intensity, VID_RANGE, VIRIDIS[:, 0]) * 255.0
+        ]).astype(np.int).T
 
         # Draw the 2d points on the image as a single pixel using numpy.
-        lidar_projection = np.copy(rgb)
+        lidar_projection = np.zeros((rgb.shape[0], rgb.shape[1], 1))
         lidar_projection[v_coord, u_coord] = color_map
-        return lidar_projection
+        rgb_with_lidar = np.concatenate([rgb, lidar_projection], axis=2)
+        return rgb_with_lidar
 
     def rgb_transform(self, rgb): 
         rgb = rgb / 255.0
@@ -174,31 +178,31 @@ class SegmentationDataset(Dataset):
         lidar_transform = np.array(self.hdf5_file["lidar-transform"][time])
         rgb = []
         semantic = []
-        lidar_camera_proj = []
+        rgb_with_lidar = []
         for camera_id in range(3):
             rgb_cam_name = f"rgb_{camera_id}"
             semantic_cam_name = f"semantic_{camera_id}"
             rgb_transform = np.array(self.hdf5_file[f"{rgb_cam_name}-transform"][time])
             rgb_i = np.array(self.hdf5_file[rgb_cam_name][time])
-            lidar_camera_proj_i = self.lidar_projection_to_camera(lidar, rgb_i, lidar_transform, rgb_transform)
+            rgb_with_lidar_i = self.lidar_projection_to_camera(lidar, rgb_i, lidar_transform, rgb_transform)
             semantic_i = np.array(self.hdf5_file[semantic_cam_name][time])
             rgb_i = rgb_i[config.img_height:config.img_height*2, config.img_width:config.img_width*2]
-            lidar_camera_proj_i = lidar_camera_proj_i[config.img_height:config.img_height*2, config.img_width:config.img_width*2]
+            rgb_with_lidar_i = rgb_with_lidar_i[config.img_height:config.img_height*2, config.img_width:config.img_width*2]
             semantic_i = semantic_i[config.img_height:config.img_height*2, config.img_width:config.img_width*2]
             rgb.append(rgb_i)
             semantic.append(semantic_i)
-            lidar_camera_proj.append(lidar_camera_proj_i)
+            rgb_with_lidar.append(rgb_with_lidar_i)
         rgb = np.concatenate(rgb, axis=1)
         semantic = np.concatenate(semantic, axis=1)
-        lidar_camera_proj = np.concatenate(lidar_camera_proj, axis=1)
+        rgb_with_lidar = np.concatenate(rgb_with_lidar, axis=1)
 
         lidar_bev = lidar_to_bev(lidar)
 
-        rgb = self.augmenter(images=rgb[...,::-1][None])[0]
+        # rgb = self.augmenter(images=rgb[...,::-1][None])[0]
         semantic = filter_sem(semantic)
         rgb, semantic, edge = self.gen_sample(rgb, semantic)
 
-        return rgb, semantic, edge, lidar_bev, lidar_camera_proj
+        return rgb, semantic, edge, lidar_bev, rgb_with_lidar
 
 if __name__ == '__main__':
     dataset = SegmentationDataset("deneme")

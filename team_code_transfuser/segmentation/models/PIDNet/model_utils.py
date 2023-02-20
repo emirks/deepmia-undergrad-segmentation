@@ -320,11 +320,11 @@ class LightBag(nn.Module):
         super(LightBag, self).__init__()
         self.conv_p = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
-            batch_norm(in_channels),
+            batch_norm(out_channels),
         )
         self.conv_i = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
-            batch_norm(in_channels),
+            batch_norm(out_channels),
         )
 
     def forward(self, p, i, d): 
