@@ -2,6 +2,7 @@ import glob
 import numpy as np
 from torch.utils.data import Dataset
 from collections import defaultdict
+import matplotlib.pyplot as plt
 
 import random, math
 import cv2
@@ -125,22 +126,26 @@ class SegmentationDataset(Dataset):
         intensity = intensity[points_in_canvas_mask]
 
         # Extract the screen coords (uv) as integers.
-        u_coord = points_2d[:, 0].astype(np.int)
-        v_coord = points_2d[:, 1].astype(np.int)
+        u_coord = points_2d[:, 0].astype(np.uint64)
+        v_coord = points_2d[:, 1].astype(np.uint64)
 
         # # Since at the time of the creation of this script, the intensity function
         # # is returning high values, these are adjusted to be nicely visualized.
         intensity = 4 * intensity - 3
-        # color_map = np.array([
-        #     np.interp(intensity, VID_RANGE, VIRIDIS[:, 0]) * 255.0,
-        #     np.interp(intensity, VID_RANGE, VIRIDIS[:, 1]) * 255.0,
-        #     np.interp(intensity, VID_RANGE, VIRIDIS[:, 2]) * 255.0]).astype(np.int).T
         color_map = np.array([
-            np.interp(intensity, VID_RANGE, VIRIDIS[:, 0]) * 255.0
-        ]).astype(np.int).T
+            np.interp(intensity, VID_RANGE, VIRIDIS[:, 0]) * 255.0,
+            np.interp(intensity, VID_RANGE, VIRIDIS[:, 1]) * 255.0,
+            np.interp(intensity, VID_RANGE, VIRIDIS[:, 2]) * 255.0]).astype(np.uint8).T
+        # color_map = np.array([
+        #     intensity * 255.0,
+        #     intensity * 255.0,
+        #     intensity * 255.0]).astype(np.uint8).T
+        # color_map = np.array([
+        #     np.interp(intensity, VID_RANGE, VIRIDIS[:, 0]) * 255.0
+        # ]).astype(np.uint8).T
 
         # Draw the 2d points on the image as a single pixel using numpy.
-        lidar_projection = np.zeros((rgb.shape[0], rgb.shape[1], 1))
+        lidar_projection = np.zeros((rgb.shape[0], rgb.shape[1], 3), dtype=np.uint8)
         lidar_projection[v_coord, u_coord] = color_map
         rgb_with_lidar = np.concatenate([rgb, lidar_projection], axis=2)
         return rgb_with_lidar
