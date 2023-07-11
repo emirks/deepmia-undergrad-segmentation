@@ -9,7 +9,7 @@ import cv2
 from models.PIDNet.model import get_pred_model
 import config
 from utils import log_eval_info, load_pretrained
-from seg_dataset import SegmentationDataset
+from .seg_dataset_carla import SegmentationDataset
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"

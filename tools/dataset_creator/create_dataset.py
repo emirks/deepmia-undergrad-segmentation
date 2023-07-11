@@ -110,7 +110,7 @@ if __name__ == "__main__":
 
 
     # Beginning data capture proccedure
-    hdf5_file_path = f"{config.SAVE_DIR}/datasets/{args.hdf5_file}.hdf5"
+    hdf5_file_path = f"{config.SAVE_DIR}/carla/datasets/{args.hdf5_file}.hdf5"
     HDF5_file = HDF5Saver(hdf5_file_path, groups=sensor_attrs)
     print("HDF5 File opened")
 

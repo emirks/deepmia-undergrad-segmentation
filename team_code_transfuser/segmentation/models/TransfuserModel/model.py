@@ -81,9 +81,10 @@ class SegmentationModel(nn.Module):
         loss = sem_loss(pred_sem, sem)
 
         # calculate smoothness and add it to the loss
-        mean_disp = disparity.mean(2, True).mean(3, True)
-        norm_disp = disparity / (mean_disp + 1e-7)
-        loss += smooth_loss(norm_disp, rgb)
+        # mean_disp = disparity.mean(2, True).mean(3, True)
+        # norm_disp = disparity / (mean_disp + 1e-7)
+        # loss += smooth_loss(norm_disp, rgb)
         loss = torch.unsqueeze(loss,0).mean()
 
+        del batch, edge, lidar_bev
         return rgb, sem, pred_sem, loss

@@ -191,9 +191,9 @@ class PIDNet(nn.Module):
         disparity = nn.Sigmoid()(pred_sem)
 
         loss_s = sem_loss(pred_sem, sem)
-        loss_b = bd_loss(out_d_loss, edge)
+        #loss_b = bd_loss(out_d_loss, edge)
 
-        loss = loss_s + loss_b
+        loss = loss_s
         # calculate smoothness and add it to the loss
         mean_disp = disparity.mean(2, True).mean(3, True)
         norm_disp = disparity / (mean_disp + 1e-7)

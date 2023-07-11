@@ -7,11 +7,15 @@ from torch.utils.tensorboard import SummaryWriter
 import tqdm
 
 # from models.ERFNet.model import SemanticSegmentation as SegmentationModel
-from models.PIDNetLidar.model import PIDNet as SegmentationModel
+# from models.PIDNetLidar.model import PIDNet as SegmentationModel
+from models.PIDNetLidarv2.model import SegmentationModel
+# from models.PIDNetLidarSAM.model import SegmentationModel
 # from models.PIDNet.model import PIDNet as SegmentationModel
 # from models.TransfuserModel.model import SegmentationModel
 
-from seg_dataset import SegmentationDataset
+from seg_dataset_carla import SegmentationDataset as SegmentationDatasetCarla
+from seg_dataset_a2d2 import SegmentationDataset as SegmentationDatasetA2d2
+
 from utils import visualize_semantic_processed, smooth_loss, BondaryLoss, adjust_learning_rate, get_confusion_matrix, visualize_cm, calculate_IoU_from_cm
 import config
 
@@ -56,7 +60,8 @@ def val_batch(batch, model : SegmentationModel):
         ax1.imshow(rgb_vis)
         ax2.imshow(visualize_semantic_processed(sem_vis))
         ax3.imshow(visualize_semantic_processed(pred_sem_vis))
-        plt.savefig(f"{config.SAVE_DIR}/logs/{args.model_name}/log-{val_it // args.num_per_log}.png")
+        plt.savefig(f"{config.SAVE_DIR}/carla/logs/{args.model_name}/log-{val_it // args.num_per_log}.png")
+        del rgb_vis, sem_vis, pred_sem_vis
 
     del rgb, sem, pred_sem
     return loss, confusion_mat
@@ -105,33 +110,38 @@ def main(args):
                             momentum=config.optim_momentum,
                             weight_decay=config.optim_wd)
     
-    train_datasets = [SegmentationDataset(hdf5_file_name=town_name) for town_name in config.towns]
-    train_combined_dataset = ConcatDataset(datasets=train_datasets)
-    train_dataloader = DataLoader(train_combined_dataset, 
+    full_dataset = SegmentationDatasetA2d2() 
+    train_size = int(0.8 * len(full_dataset))
+    test_size = len(full_dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, test_size])
+    # train_datasets = [SegmentationDatasetCarla(hdf5_file_name=town_name) for town_name in config.towns]
+    # train_dataset = ConcatDataset(datasets=train_datasets)
+    # val_datasets = [SegmentationDatasetCarla(hdf5_file_name=f"{town_name}-val") for town_name in config.towns]
+    # val_dataset = ConcatDataset(datasets=val_datasets)
+
+    train_dataloader = DataLoader(train_dataset, 
         num_workers=args.num_workers,
         batch_size=args.batch_size,
         shuffle=True,
         drop_last=True,
         pin_memory=True,
     )
-    val_datasets = [SegmentationDataset(hdf5_file_name=f"{town_name}-val") for town_name in config.towns]
-    val_combined_dataset = ConcatDataset(datasets=val_datasets)
-    val_dataloader = DataLoader(val_combined_dataset, 
+    val_dataloader = DataLoader(val_dataset, 
         num_workers=args.num_workers,
         batch_size=args.batch_size,
         shuffle=True,
         drop_last=True,
         pin_memory=True,
     )
-    epoch_iters = int(train_combined_dataset.__len__() / args.batch_size)
+    epoch_iters = int(train_dataset.__len__() / args.batch_size)
     global total_iterations
     total_iterations = args.num_epoch * epoch_iters
 
-    log_dir = f"{config.SAVE_DIR}/logs/{args.model_name}"
+    log_dir = f"{config.SAVE_DIR}/carla/logs/{args.model_name}"
     if not os.path.exists(log_dir): 
         os.makedirs(log_dir)
 
-    model_save_path = f'{config.SAVE_DIR}/pretrained/{args.model_name}'
+    model_save_path = f'{config.SAVE_DIR}/carla/pretrained/{args.model_name}'
     best_mIoU = 0
     try:
         for epoch in range(args.num_epoch): 

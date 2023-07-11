@@ -49,7 +49,7 @@ def log_train_info(seg_info, counter):
     ax2.imshow(visualize_semantic_processed(sem))
     ax3.imshow(visualize_semantic_processed(pred_sem))
     #plt.show()
-    plt.savefig(f"{config.SAVE_DIR}/logs/log-{counter}.png")
+    plt.savefig(f"{config.SAVE_DIR}/carla/logs/log-{counter}.png")
     del rgb, sem, pred_sem
 
     plt.close('all')

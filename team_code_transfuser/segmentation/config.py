@@ -42,7 +42,7 @@ weights = {
 
 class_weights = torch.FloatTensor([0.8373] + [weights[i] for i in labels]).cuda()
 
-SAVE_DIR = "/media/transfuser/1ee3aeb6-a6d1-40b8-bd75-87f69311f33b1/segmentation/carla"
+SAVE_DIR = "/media/transfuser/1ee3aeb6-a6d1-40b8-bd75-87f69311f33b4/segmentation"
 
 scale = 1 # image pre-processing
 img_resolution = (160, 960) # image pre-processing in H, W

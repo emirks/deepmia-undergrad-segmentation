@@ -48,7 +48,7 @@ class SegmentationDataset(Dataset):
         super(SegmentationDataset, self).__init__()
         self.size = 0
 
-        hdf5_file_path = f"{config.SAVE_DIR}/datasets/{hdf5_file_name}.hdf5"
+        hdf5_file_path = f"{config.SAVE_DIR}/carla/datasets/{hdf5_file_name}.hdf5"
         self.hdf5_file = h5py.File(hdf5_file_path, 'r')
         self.file_timestamps = self.hdf5_file['timestamps']['timestamps']
 
@@ -61,8 +61,33 @@ class SegmentationDataset(Dataset):
     def __len__(self): 
         return self.size
     
+    def get_point_cloud_in_camera_space(self, point_cloud, lidar_transform, camera_transform): 
+        local_lidar_points = np.array(point_cloud[:, :3]).T
+
+        # Add an extra 1.0 at the end of each 3d point so it becomes of
+        # shape (4, p_cloud_size) and it can be multiplied by a (4, 4) matrix.
+        local_lidar_points = np.r_[local_lidar_points, [np.ones(local_lidar_points.shape[1])]]
+
+        # This (4, 4) matrix transforms the points from lidar space to world space.
+        lidar_2_world = get_transform_matrix(lidar_transform[:3], lidar_transform[3:])
+
+        # Transform the points from lidar space to world space.
+        world_points = np.dot(lidar_2_world, local_lidar_points)
+
+        # This (4, 4) matrix transforms the points from world to sensor coordinates.
+        world_2_camera = get_inverse_transform_matrix(camera_transform[:3], camera_transform[3:])
+
+        # Transform the points from world space to camera space.
+        sensor_points = np.dot(world_2_camera, world_points)
+        return sensor_points
+
     def lidar_projection_to_camera(self, lidar_data, rgb, lidar_transform, camera_transform): 
         intensity = np.array(lidar_data[:, 3])
+        intensity = intensity[lidar_data[..., 2] > -2.3]
+        lidar_data = lidar_data[lidar_data[..., 2] > -2.3]
+        # intensity = intensity[lidar_data[..., 2] > -4]
+        # lidar_data = lidar_data[lidar_data[..., 2] > -4]
+
         local_lidar_points = np.array(lidar_data[:, :3]).T
 
         # Add an extra 1.0 at the end of each 3d point so it becomes of
@@ -102,6 +127,7 @@ class SegmentationDataset(Dataset):
             sensor_points[1],
             sensor_points[2] * -1,
             sensor_points[0]])
+        distances = (point_in_camera_coords[0]**2 + point_in_camera_coords[1]**2)**(1/2)
 
         # Finally we can use our K matrix to do the actual 3D -> 2D.
         points_2d = np.dot(config.K, point_in_camera_coords)
@@ -118,36 +144,36 @@ class SegmentationDataset(Dataset):
         # must be discarted, the same with points behind the camera projection plane.
         points_2d = points_2d.T
         intensity = intensity.T
+        distances = distances.T
         points_in_canvas_mask = \
             (points_2d[:, 0] > 0.0) & (points_2d[:, 0] < config.camera_width) & \
             (points_2d[:, 1] > 0.0) & (points_2d[:, 1] < config.camera_height) & \
             (points_2d[:, 2] > 0.0)
         points_2d = points_2d[points_in_canvas_mask]
         intensity = intensity[points_in_canvas_mask]
+        distances = distances[points_in_canvas_mask]
 
         # Extract the screen coords (uv) as integers.
-        u_coord = points_2d[:, 0].astype(np.uint64)
-        v_coord = points_2d[:, 1].astype(np.uint64)
+        u_coord = points_2d[:, 0].astype(np.int)
+        v_coord = points_2d[:, 1].astype(np.int)
 
         # # Since at the time of the creation of this script, the intensity function
         # # is returning high values, these are adjusted to be nicely visualized.
         intensity = 4 * intensity - 3
+        # distances = (distances - np.min(distances)) / (np.max(distances) - np.min(distances)) 
         color_map = np.array([
             np.interp(intensity, VID_RANGE, VIRIDIS[:, 0]) * 255.0,
             np.interp(intensity, VID_RANGE, VIRIDIS[:, 1]) * 255.0,
             np.interp(intensity, VID_RANGE, VIRIDIS[:, 2]) * 255.0]).astype(np.uint8).T
-        # color_map = np.array([
-        #     intensity * 255.0,
-        #     intensity * 255.0,
-        #     intensity * 255.0]).astype(np.uint8).T
-        # color_map = np.array([
-        #     np.interp(intensity, VID_RANGE, VIRIDIS[:, 0]) * 255.0
-        # ]).astype(np.uint8).T
 
         # Draw the 2d points on the image as a single pixel using numpy.
         lidar_projection = np.zeros((rgb.shape[0], rgb.shape[1], 3), dtype=np.uint8)
-        lidar_projection[v_coord, u_coord] = color_map
-        rgb_with_lidar = np.concatenate([rgb, lidar_projection], axis=2)
+        dot_extent = 1
+        for i in range(len(points_2d)):
+            lidar_projection[v_coord[i]-dot_extent : v_coord[i]+dot_extent,
+                            u_coord[i]-dot_extent : u_coord[i]+dot_extent] += color_map[i]
+        # rgb_with_lidar = np.concatenate([rgb, lidar_projection], axis=2)
+        rgb_with_lidar = lidar_projection
         return rgb_with_lidar
 
     def rgb_transform(self, rgb): 
@@ -206,12 +232,17 @@ class SegmentationDataset(Dataset):
         # rgb = self.augmenter(images=rgb[...,::-1][None])[0]
         semantic = filter_sem(semantic)
         rgb, semantic, edge = self.gen_sample(rgb, semantic)
+        # cv2.imshow("rgb", rgb)
+        # cv2.imshow("lidar-projected", rgb_with_lidar[:, :, :])
+        # cv2.imshow("lidar-bev-1", lidar_bev[:, :, 0])
+        # cv2.imshow("lidar-bev-2", lidar_bev[:, :, 1])
+        # cv2.waitKey(0)
 
         return rgb, semantic, edge, lidar_bev, rgb_with_lidar
 
 if __name__ == '__main__':
     dataset = SegmentationDataset("deneme")
-    item = dataset[2]
+    item = dataset[1]
     # import tqdm
     # for t in tqdm.tqdm(range(len(dataset))):
     #     item = dataset[t]
