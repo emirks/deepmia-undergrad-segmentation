@@ -1,0 +1,3 @@
+[submodule "team_code_transfuser/segmentation/segment-anything"]
+	path = team_code_transfuser/segmentation/segment-anything
+	url = https://github.com/facebookresearch/segment-anything.git
