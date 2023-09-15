@@ -2,7 +2,7 @@
 
 This repository contains my undergraduate research work on semantic segmentation for autonomous driving using multi-modal sensor fusion (RGB cameras and LiDAR) in the CARLA simulator. The project extends the [TransFuser](https://arxiv.org/abs/2205.15997) framework with custom architectures for semantic segmentation.
 
-> **For detailed research notes, literature reviews, and paper summaries, visit the [Research Notes](https://erkamkavak.notion.site/deepmia-research) page.**  
+> **For detailed research notes, literature reviews, and paper summaries, visit the [Research Notes](https://emirkisa.notion.site/DeepMIA-Research-2a6e201096b18157af49ef594a097349) page.**  
 *Written by Erkam Kavak and Emir Kısa (for internal works, not cured or maintained)*
 
 ## Purpose
@@ -17,6 +17,8 @@ Our goal is to build a robust autonomous driving system that effectively fuses m
 ![Proposed Architecture](model_architecture.png)
 
 *Three-branch multi-modal fusion architecture: Camera Branch (left), Fused Branch (center), and LiDAR BEV Branch (right). Multi-head attention modules enable cross-modal feature interaction at multiple network depths.*
+
+[Hand-Drawn Version \:)](https://github.com/emirks/deepmia-research-segmentation/blob/Semantic-Segmentation/model_hand_drawn.jpeg)
 
 ## Rationale
 
