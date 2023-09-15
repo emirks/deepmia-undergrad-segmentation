@@ -1,0 +1,30 @@
+# Core Dependencies
+torch==1.11.0
+torchvision==0.12.0
+torchaudio==0.11.0
+numpy==1.18.1
+opencv-python==4.2.0.32
+Pillow==7.0.0
+matplotlib==3.0.3
+tensorboard==2.1.1
+tqdm==4.43.0
+pandas==0.25.3
+scikit-learn==0.22.2.post1
+scikit-image==0.16.2
+
+# Deep Learning Utilities
+timm==0.5.4
+mmsegmentation==0.25.0
+mmdet==2.25.0
+
+# Data Processing
+h5py
+diskcache==5.3.0
+
+# Visualization
+seaborn
+
+# Utilities
+pyyaml==5.3
+tqdm==4.43.0
+

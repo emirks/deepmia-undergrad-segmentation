@@ -1,241 +1,128 @@
-# TransFuser: Imitation with Transformer-Based Sensor Fusion for Autonomous Driving
+# DeepMIA: Multi-Modal Autonomous Driving System
 
-## [Paper](https://arxiv.org/abs/2205.15997) 
+This repository contains my undergraduate research work on semantic segmentation for autonomous driving using multi-modal sensor fusion (RGB cameras and LiDAR) in the CARLA simulator. The project extends the [TransFuser](https://arxiv.org/abs/2205.15997) framework with custom architectures for semantic segmentation.
 
-<img src="figures/demo.gif">
+> **For detailed research notes, literature reviews, and paper summaries, visit the [Research Notes](https://erkamkavak.notion.site/deepmia-research) page.**  
+*Written by Erkam Kavak and Emir Kısa (for internal works, not cured or maintained)*
 
-This repository contains the code for the paper [TransFuser: Imitation with Transformer-Based Sensor Fusion for Autonomous Driving](https://arxiv.org/abs/2205.15997). 
-This work is a journal extension of the CVPR 2021 paper [Multi-Modal Fusion Transformer for End-to-End Autonomous Driving](https://arxiv.org/abs/2104.09224). 
-The code of the CVPR 2021 paper is available in the [cvpr2021](https://github.com/autonomousvision/transfuser/tree/cvpr2021) branch.
+## Purpose
 
-If you find our code or papers useful, please cite:
+Our goal is to build a robust autonomous driving system that effectively fuses multiple sensor modalities to achieve safe, high-performance driving in complex urban scenarios.
 
-```bibtex
-@article{Chitta2022ARXIV,
-  author = {Chitta, Kashyap and
-            Prakash, Aditya and
-            Jaeger, Bernhard and
-            Yu, Zehao and
-            Renz, Katrin and
-            Geiger, Andreas},
-  title = {TransFuser: Imitation with Transformer-Based Sensor Fusion for Autonomous Driving},
-  journal = {arXiv},
-  volume  = {2205.15997},
-  year = {2022},
-}
-```
-
-```bibtex
-@inproceedings{Prakash2021CVPR,
-  author = {Prakash, Aditya and
-            Chitta, Kashyap and
-            Geiger, Andreas},
-  title = {Multi-Modal Fusion Transformer for End-to-End Autonomous Driving},
-  booktitle = {Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year = {2021}
-}
-```
-
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/transfuser-imitation-with-transformer-based/autonomous-driving-on-carla-leaderboard)](https://paperswithcode.com/sota/autonomous-driving-on-carla-leaderboard?p=transfuser-imitation-with-transformer-based)
-
-## ToDos
-
-- [x] Autopilot
-- [x] Training scenarios and routes
-- [x] Longest6 benchmark
-- [x] Inference code
-- [x] Data generation
-- [x] Pretrained agents
-- [x] Training script
-- [x] Dataset upload
-- [x] Leaderboard submission instructions
-- [ ] Additional tools
+**Key Challenge**: Most existing methods (e.g., TransFuser) only use LiDAR in Bird's-Eye-View (BEV) format, losing valuable 3D spatial information. We explore whether using LiDAR in both BEV and camera-projected formats improves perception and driving performance.
 
 
-## Contents
+## Proposed Architecture
 
-1. [Setup](#setup)
-2. [Dataset and Training](#dataset-and-training)
-3. [Evaluation](#evaluation)
+![Proposed Architecture](model_architecture.png)
 
+*Three-branch multi-modal fusion architecture: Camera Branch (left), Fused Branch (center), and LiDAR BEV Branch (right). Multi-head attention modules enable cross-modal feature interaction at multiple network depths.*
 
-## Setup
+## Rationale
 
-Clone the repo, setup CARLA 0.9.10.1, and build the conda environment:
+### 1. **Three-Branch Architecture Rationale**
 
-```Shell
-git clone https://github.com/autonomousvision/transfuser.git
-cd transfuser
-git checkout 2022
-chmod +x setup_carla.sh
-./setup_carla.sh
+**Problem with existing methods**: Most LiDAR-camera fusion approaches (e.g., TransFuser) use only two branches: one for LiDAR BEV features and one for camera features. However, BEV representation loses valuable 3D spatial information inherent in raw LiDAR point clouds.
+
+**Our approach**: We introduced a third branch that processes camera-projected LiDAR features, allowing us to:
+- Preserve LiDAR's 3D context through projection onto camera views
+- Enable pixel-wise cross-attention between camera and LiDAR features
+- Avoid 3D computational complexity while maintaining spatial relationships
+
+**Tradeoff**: Projecting LiDAR to 2D loses some 3D geometric information, but gains computational efficiency and enables more effective 2D fusion for semantic segmentation tasks.
+
+### 2. **Cross-Attention vs. Simple Concatenation**
+
+**Limitation of TransFuser's attention**: TransFuser concatenates camera and LiDAR features without proper conditioning, which limits fusion effectiveness.
+
+**Our solution**: We explored cross-attention mechanisms (`MultiSpatialTransformer`, `FusedLidarAttention`) that:
+- Build relationship maps between different feature spaces
+- Selectively attend to relevant features rather than blindly concatenating
+- Enable pixel-wise information transfer when features are spatially aligned
+
+**Insight from YOLOv5 experiments**: We found that simple concatenation (Concat blocks) is less effective than attention-based fusion. Upsampling operations can also introduce artifacts, making attention-based fusion more reliable.
+
+### 3. **LiDAR Projection Strategy**
+
+**Why project LiDAR to camera view?**
+- **Easier data transfer**: Camera and projected LiDAR share the same 2D spatial structure
+- **Computational efficiency**: 2D convolutions are faster and simpler than 3D operations
+- **Output alignment**: Semantic segmentation outputs are 2D, so 3D information becomes redundant
+- **Cross-attention compatibility**: Pixel-wise attention requires spatial alignment
+
+**Architecture details**: 
+- Camera branch uses frozen SAM (Segment Anything Model) layers (12 layers, pretrained)
+- LiDAR branch uses ResNet (4 layers)
+- Layer matching: 1 ResNet layer processes alongside 3 SAM layers to maintain feature alignment
+
+### 4. **Learning from Other Vehicles (LAV Analysis)**
+
+**Insight from LAV**: Learning from surrounding vehicles provides diverse driving scenarios without additional data collection.
+
+**Caveats we identified**:
+- **Sensor failure sensitivity**: Any sensor failure or noisy input directly affects learning, as the model learns from observed (potentially incorrect) vehicle movements
+- **Distance limitations**: Sensors provide unreliable data beyond certain distances, so learning from distant vehicles reduces performance
+- **Weather dependency**: In adverse conditions (e.g., snow), noisy sensor data leads to incorrect learning from other vehicles' movements
+
+**Our approach**: We focus on robust sensor fusion rather than learning from potentially unreliable observations of other vehicles.
+
+### 5. **Multi-Level Fusion Strategy**
+
+**Design choice**: We fuse features at multiple network depths (layers 1-4) rather than only at the end.
+
+**Rationale**: 
+- Early fusion captures low-level geometric correspondences
+- Late fusion captures high-level semantic relationships
+- Multi-level fusion combines both, improving feature representation
+
+**Implementation**: Features are shared between branches at each level via cross-attention, then aggregated through Pyramid Pooling Module (PPM) for final prediction.
+
+## Preliminary Results
+
+**Note**: Project is still under development. Results are preliminary and not final.
+
+### Performance on CARLA NoCrash Benchmark
+
+| Method | Avg. Driving Score ↑ | Avg. Route Completion ↑ | Avg. Infraction Penalty ↓ | Collisions (Veh.) ↓ | Collisions (Ped.) ↓ | Red Light ↓ | Stop Sign ↓ | Off-road ↓ |
+|--------|---------------------|------------------------|--------------------------|-------------------|-------------------|------------|------------|-----------|
+| **PIDNetLidarv2 (Ours)** | **74.49** | 82.71 | 0.894 | 0.064 | 0.015 | 0.022 | 0.143 | 0.000 |
+| TransFuser (2022) | 61.18 | 86.69 | 0.71 | – | – | – | – | – |
+| LAV (2022) | 61.85 | **94.46** | **0.64** | – | – | – | – | – |
+
+### Key Findings
+
+- **Higher Driving Score**: Our system achieves **+13.3 points** over TransFuser and **+12.6 points** over LAV
+- **Low Collision Rates**: Vehicle collisions (0.064) and pedestrian collisions (0.015) are well-controlled
+- **Route Completion**: Lower than LAV (82.71% vs 94.46%), but still competitive
+
+## Quick Training and Eval
+
+```bash
+# Setup
 conda env create -f environment.yml
 conda activate tfuse
-pip install torch-scatter -f https://data.pyg.org/whl/torch-1.11.0+cu102.html
-pip install mmcv-full==1.5.3 -f https://download.openmmlab.com/mmcv/dist/cu102/torch1.11.0/index.html
+cd team_code_transfuser && pip install -r requirements.txt
+
+# Train semantic segmentation model
+cd segmentation
+python train_seg.py --model-name pidnet_lidar_v2 --num-epoch 50 --batch-size 16
+
+# Evaluate
+python eval_seg.py --model-type pidnet_lidar_v2 --checkpoint-path ./outputs/.../best.pt
 ```
 
-## Dataset and Training
-Our dataset is generated via a privileged agent which we call the autopilot (`/team_code_autopilot/autopilot.py`) in 8 CARLA towns using the routes and scenario files provided in [this folder](./leaderboard/data/training/). See the [tools/dataset](./tools/dataset) folder for detailed documentation regarding the training routes and scenarios. You can download the dataset (210GB) by running:
 
-```Shell
-chmod +x download_data.sh
-./download_data.sh
-```
+## Key Models
 
-The dataset is structured as follows:
-```
-- Scenario
-    - Town
-        - Route
-            - rgb: camera images
-            - depth: corresponding depth images
-            - semantics: corresponding segmentation images
-            - lidar: 3d point cloud in .npy format
-            - topdown: topdown segmentation maps
-            - label_raw: 3d bounding boxes for vehicles
-            - measurements: contains ego-agent's position, velocity and other metadata
-```
-
-### Data generation
-In addition to the dataset itself, we have provided the scripts for data generation with our autopilot agent. To generate data, the first step is to launch a CARLA server:
-
-```Shell
-./CarlaUE4.sh --world-port=2000 -opengl
-```
-
-For more information on running CARLA servers (e.g. on a machine without a display), see the [official documentation.](https://carla.readthedocs.io/en/stable/carla_headless/) Once the server is running, use the script below for generating training data:
-```Shell
-./leaderboard/scripts/datagen.sh <carla root> <working directory of this repo (*/transfuser/)>
-```
-
-The main variables to set for this script are `SCENARIOS` and `ROUTES`. 
-
-### Training script
-
-The code for training via imitation learning is provided in [train.py.](./team_code_transfuser/train.py) \
-A minimal example of running the training script on a single machine:
-```Shell
-cd team_code_transfuser
-python train.py --batch_size 10 --logdir /path/to/logdir --root_dir /path/to/dataset_root/ --parallel_training 0
-```
-The training script has many more useful features documented at the start of the main function. 
-One of them is parallel training. 
-The script has to be started differently when training on a multi-gpu node:
-```Shell
-cd team_code_transfuser
-CUDA_VISIBLE_DEVICES=0,1 OMP_NUM_THREADS=16 OPENBLAS_NUM_THREADS=1 torchrun --nnodes=1 --nproc_per_node=2 --max_restarts=0 --rdzv_id=1234576890 --rdzv_backend=c10d train.py --logdir /path/to/logdir --root_dir /path/to/dataset_root/ --parallel_training 1
-```
-Enumerate the GPUs you want to train on with CUDA_VISIBLE_DEVICES.
-Set the variable OMP_NUM_THREADS to the number of cpus available on your system.
-Set OPENBLAS_NUM_THREADS=1 if you want to avoid threads spawning other threads.
-Set --nproc_per_node to the number of available GPUs on your node.
+- **PIDNetLidarv2** (Custom): Three-branch multi-modal fusion
+- **PIDNetLidar**: LiDAR fusion variant
+- **PIDNetLidarSAM**: SAM-integrated variant
+- **ERFNet, PIDNet**: Baselines for comparison
 
 
-## Evaluation
+## Related Work
 
-### Longest6 benchmark
-We make some minor modifications to the CARLA leaderboard code for the Longest6 benchmark, which are documented [here](./leaderboard). See the [leaderboard/data/longest6](./leaderboard/data/longest6/) folder for a description of Longest6 and how to evaluate on it.
-
-### Pretrained agents
-Pre-trained agent files for all 4 methods can be downloaded from [AWS](https://s3.eu-central-1.amazonaws.com/avg-projects/transfuser/models_2022.zip):
-
-```Shell
-mkdir model_ckpt
-wget https://s3.eu-central-1.amazonaws.com/avg-projects/transfuser/models_2022.zip -P model_ckpt
-unzip model_ckpt/models_2022.zip -d model_ckpt/
-rm model_ckpt/models_2022.zip
-```
-
-### Running an agent
-To evaluate a model, we first launch a CARLA server:
-
-```Shell
-./CarlaUE4.sh --world-port=2000 -opengl
-```
-
-Once the CARLA server is running, evaluate an agent with the script:
-```Shell
-./leaderboard/scripts/local_evaluation.sh <carla root> <working directory of this repo (*/transfuser/)>
-```
-
-By editing the arguments in `local_evaluation.sh`, we can benchmark performance on the Longest6 routes. You can evaluate both privileged agents (such as [autopilot.py]) and sensor-based models. To evaluate the sensor-based models use [submission_agent.py](./team_code_transfuser/submission_agent.py) as the `TEAM_AGENT` and point to the folder you downloaded the model weights into for the `TEAM_CONFIG`. The code is automatically configured to use the correct method based on the args.txt file in the model folder.
-
-### Parsing longest6 results
-To compute additional statistics from the results of evaluation runs we provide a parser script [tools/result_parser.py](./tools/result_parser.py).
-
-```Shell
-${WORK_DIR}/tools/result_parser.py --xml ${WORK_DIR}/leaderboard/data/longest6/longest6.xml --results /path/to/folder/with/json_results/ --save_dir /path/to/output --town_maps ${WORK_DIR}/leaderboard/data/town_maps_xodr
-```
-
-It will generate a results.csv file containing the average results of the run as well as additional statistics. It also generates town maps and marks the locations where infractions occurred.
-
-### Submitting to the CARLA leaderboard
-To submit to the CARLA leaderboard you need docker installed on your system.
-Edit the paths at the start of [make_docker.sh](./leaderboard/scripts/make_docker.sh).
-Create the folder *team_code_transfuser/model_ckpt/transfuser*.
-Copy the *model.pth* files and *args.txt* that you want to evaluate to *team_code_transfuser/model_ckpt/transfuser*.
-If you want to evaluate an ensemble simply copy multiple .pth files into the folder, the code will load all of them and ensemble the predictions.
-
-```Shell
-cd leaderboard
-cd scripts
-./make_docker.sh
-```
-The script will create a docker image with the name transfuser-agent.
-Follow the instructions on the [leaderboard](https://leaderboard.carla.org/submit/) to make an account and install alpha.
-
-```Shell
-alpha login
-alpha benchmark:submit  --split 3 transfuser-agent:latest
-```
-The command will upload the docker image to the cloud and evaluate it.
-
-<!-- ### Building docker image
-
-Add the following paths to your ```~/.bashrc```
-```
-export CARLA_ROOT=<path_to_carla_root>
-export SCENARIO_RUNNER_ROOT=<path_to_scenario_runner_in_this_repo>
-export LEADERBOARD_ROOT=<path_to_leaderboard_in_this_repo>
-export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla/":"${SCENARIO_RUNNER_ROOT}":"${LEADERBOARD_ROOT}":${PYTHONPATH}
-```
-
-Edit the contents of ```leaderboard/scripts/Dockerfile.master``` to specify the required dependencies, agent code and model checkpoints. Add all the required information in the area delimited by the tags ```BEGINNING OF USER COMMANDS``` and ```END OF USER COMMANDS```. The current Dockerfile works for all the models in this repository.
-
-Specify a name for the docker image in ```leaderboard/scripts/make_docker.sh``` and run:
-```
-leaderboard/scripts/make_docker.sh
-```
-
-Refer to the Transfuser example for the directory structure and where to include the code and checkpoints.
-
-### Testing the docker image locally
-
-Spin up a CARLA server:
-```
-SDL_VIDEODRIVER=offscreen SDL_HINT_CUDA_DEVICE=0 ./CarlaUE4.sh -world-port=2000 -opengl
-```
-
-Run the docker container:  
-Docker 19:  
-```
-docker run -it --rm --net=host --gpus '"device=0"' -e PORT=2000 <docker_image> ./leaderboard/scripts/run_evaluation.sh
-```
-If the docker container doesn't start properly, add another environment variable ```SDL_AUDIODRIVER=dsp```.
-
-### Submitting docker image to the leaderboard
-
-Register on [AlphaDriver](https://app.alphadrive.ai/), create a team and apply to the CARLA Leaderboard.
-
-Install AlphaDrive cli:
-```
-curl http://dist.alphadrive.ai/install-ubuntu.sh | sh -
-```
-
-Login to alphadrive and submit the docker image:
-```
-alpha login
-alpha benchmark:submit --split <2/3> <docker_image>
-```
-Use ```split 2``` for MAP track and ```split 3``` for SENSORS track. -->
+- [TransFuser](https://arxiv.org/abs/2205.15997) - Transformer-based sensor fusion
+- [LAV](https://arxiv.org/abs/2203.02424) - Learning from all vehicles
+- [PIDNet](https://arxiv.org/abs/2206.02066) - Real-time segmentation network
+- [CARLA Simulator](https://carla.org/)

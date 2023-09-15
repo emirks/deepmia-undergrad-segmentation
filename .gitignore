@@ -159,12 +159,80 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-results/
+# Results and outputs
+results/*.json
+!results/.gitkeep
 model_ckpt/
 data/
+outputs/
+logs/
+runs/
+pretrained/
+*.th
 
-team_code_transfuser/segmentation/logs
-team_code_transfuser/segmentation/assets
-team_code_transfuser/segmentation/pretrained
-model-outputs
-team_code_transfuser/segmentation/runs
+# Model checkpoints
+*.pth
+*.pt
+*.th
+*.ckpt
+*.pkl
+*.bin
+sam_vit_*.pth
+checkpoints/
+
+# Dataset files
+*.hdf5
+*.h5
+datasets/
+*.lmdb
+*.mdb
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.venv
+venv/
+ENV/
+
+# Large files
+*.zip
+*.tar.gz
+*.tar
+*.pdf
+!LICENSE
+
+# Large media files (add specific large files if needed)
+# Uncomment if demo.gif or other large images exist
+# figures/demo.gif
+# *.gif
+# Large PNG files (keep model_architecture.png, exclude others if >10MB)
+# figures/**/*.png
+
+# Temporary files
+*.tmp
+*.log
+*.cache
